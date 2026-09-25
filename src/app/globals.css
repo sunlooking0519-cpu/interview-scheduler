@@ -1,0 +1,10 @@
+@import "tailwindcss";
+
+@theme inline {
+  --font-sans: Arial, "Malgun Gothic", sans-serif;
+}
+
+body { background: #f6f8fc; color: #17243b; font-family: var(--font-sans); }
+button, a, input { -webkit-tap-highlight-color: transparent; }
+button:not(:disabled), a { cursor: pointer; }
+:focus-visible { outline: 3px solid #6366f1; outline-offset: 4px; }
