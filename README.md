@@ -26,7 +26,7 @@ pnpm build
 | /login | 지원자 로그인 입력 양식 |
 | /booking | 예시 캘린더와 시간 선택 |
 | /booking/complete | 선택 결과 표시 |
-| /admin | 가상 데이터로 구성한 HR 대시보드 |
+| /admin | Supabase 예약 데이터를 조회하는 HR 대시보드 |
 
 ## 디렉토리 책임
 
@@ -42,9 +42,9 @@ pnpm build
 
 ## 현재 구현 범위
 
-네 가지 기본 화면과 화면 이동이 구현되어 있습니다. 이름/전화번호/이메일과 선택한 날짜/시간은 서버에서 다시 검증한 뒤 Supabase `interviews` 테이블에 저장합니다. 2026년 10월 12~16일 일정은 현재 UI에 고정되어 있으며, 동일한 날짜와 시간의 확정 예약은 데이터베이스에서 거절합니다. HR 화면은 아직 가상 데이터입니다.
+네 가지 기본 화면과 화면 이동이 구현되어 있습니다. 이름/전화번호/이메일과 선택한 날짜/시간은 서버에서 다시 검증한 뒤 Supabase `interviews` 테이블에 저장합니다. 2026년 10월 12~16일 일정은 현재 UI에 고정되어 있으며, 동일한 날짜와 시간의 확정 예약은 데이터베이스에서 거절합니다. HR 화면은 관리자 세션을 검증한 뒤 Supabase 예약 데이터를 조회합니다.
 
-초대 인증, 면접관별 가용 시간 계산, 이메일 발송, 관리자 인증·실데이터 조회는 후속 구현 항목입니다.
+초대 인증, 면접관별 가용 시간 계산, 이메일 발송과 예약 상태 변경 기능은 후속 구현 항목입니다.
 
 ## 다음 구현 순서
 
@@ -82,3 +82,12 @@ ADMIN_SESSION_SECRET=replace-with-at-least-32-random-characters
 ```
 
 예시 비밀번호나 실제 비밀번호 원문은 `.env`, SQL 파일, 소스 코드 또는 Git 기록에 저장하지 마세요. 공개 로그인 엔드포인트에는 운영 전 Vercel WAF 또는 별도 rate limiting을 적용하는 것을 권장합니다.
+## 관리자 대시보드 데이터 조회
+
+관리자 대시보드는 관리자 서명 쿠키를 검증한 다음 서버에서만 `SUPABASE_SECRET_KEY`를 사용해 `interviews`를 조회합니다. 이 키는 RLS를 우회하므로 `NEXT_PUBLIC_` 접두사를 붙이거나 브라우저 코드에 사용하면 안 됩니다.
+
+```env
+SUPABASE_SECRET_KEY=sb_secret_your-secret-key
+```
+
+Supabase Dashboard의 Project Settings > API Keys에서 Secret key를 생성하고 Vercel의 Production 환경 변수에 등록한 뒤 재배포합니다. 구형 프로젝트에서는 `SUPABASE_SERVICE_ROLE_KEY`도 지원하지만 새 Secret key 사용을 권장합니다.
