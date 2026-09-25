@@ -1,14 +1,12 @@
--- 1. Supabase Dashboard > Authentication > Users에서 관리자 사용자를 먼저 만드세요.
---    이메일은 interviews 행의 이메일과 같아야 하며 비밀번호는 Dashboard에서만 설정합니다.
--- 2. 아래 ADMIN_EMAIL을 김경희 지원자의 실제 이메일로 바꾼 뒤 SQL Editor에서 실행하세요.
+-- 먼저 admin-auth-migration.sql 전체를 실행하세요.
+-- 아래 NEW_STRONG_PASSWORD를 실제 새 비밀번호로 바꾸어 실행합니다.
+-- 같은 이름의 행이 여러 개라면 이메일 조건을 반드시 추가하세요.
 
 update public.interviews
-set role = 'super_admin'
-where name = '김경희'
-  and lower(email) = lower('ADMIN_EMAIL');
+set role = 'super_admin',
+    password_hash = extensions.crypt('NEW_STRONG_PASSWORD', extensions.gen_salt('bf', 12))
+where name = '김경희';
 
--- 정확히 한 행이 반환되는지 확인하세요.
-select id, name, email, role
+select id, name, email, role, password_hash is not null as has_password
 from public.interviews
-where name = '김경희'
-  and lower(email) = lower('ADMIN_EMAIL');
+where name = '김경희';

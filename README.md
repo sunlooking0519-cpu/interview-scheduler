@@ -69,11 +69,16 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-or-publishable-key
 공개 예약 폼은 RLS 정책에 따라 `interviews` 테이블에 확정 예약을 추가할 수만 있습니다. 조회·수정·삭제 권한은 열려 있지 않으며, 동일한 날짜와 시간의 확정 예약은 데이터베이스 고유 인덱스로 거절됩니다.
 ## 최고 관리자 설정
 
-관리자 비밀번호는 애플리케이션 코드나 `interviews` 테이블에 저장하지 않습니다. Supabase Auth가 이메일·비밀번호를 인증하고, 앱은 인증된 이메일과 `interviews`의 이름·이메일·`super_admin` 역할을 대조합니다.
+관리자는 이름과 비밀번호로 로그인합니다. 비밀번호 원문 대신 bcrypt 해시만 `interviews.password_hash`에 저장하며, 로그인 성공 후 서버가 서명한 HttpOnly 쿠키를 8시간 동안 발급합니다.
 
-1. `supabase/schema.sql`을 다시 실행해 `role` 컬럼과 관리자 조회 RLS 정책을 적용합니다.
-2. Supabase Dashboard의 Authentication > Users에서 관리자 사용자를 생성합니다. 이메일은 김경희 지원자 행의 이메일과 동일해야 합니다.
-3. `supabase/promote-admin.sql`의 `ADMIN_EMAIL`을 실제 이메일로 교체한 뒤 SQL Editor에서 실행합니다.
-4. `/admin/login`에서 이름, 같은 이메일, Supabase Auth에 설정한 비밀번호로 로그인합니다.
+1. Supabase SQL Editor에서 `supabase/admin-auth-migration.sql` 전체를 먼저 실행합니다.
+2. `supabase/promote-admin.sql`의 `NEW_STRONG_PASSWORD`를 새로운 비밀번호로 바꿉니다.
+3. `김경희` 행이 여러 개라면 `where` 절에 실제 이메일 조건을 추가한 후 실행합니다.
+4. Vercel에 32자 이상의 무작위 `ADMIN_SESSION_SECRET` 환경 변수를 추가하고 재배포합니다.
+5. `/admin/login`에서 이름과 새 비밀번호로 로그인합니다.
 
-예시 비밀번호를 포함한 실제 비밀번호는 `.env`, SQL 파일, 소스 코드 또는 Git 기록에 저장하지 마세요.
+```env
+ADMIN_SESSION_SECRET=replace-with-at-least-32-random-characters
+```
+
+예시 비밀번호나 실제 비밀번호 원문은 `.env`, SQL 파일, 소스 코드 또는 Git 기록에 저장하지 마세요. 공개 로그인 엔드포인트에는 운영 전 Vercel WAF 또는 별도 rate limiting을 적용하는 것을 권장합니다.
