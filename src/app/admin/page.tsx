@@ -39,8 +39,8 @@ export default async function AdminPage() {
         </form>
       </div>
       {loadError && <p role="alert" className="mt-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{loadError}</p>}
-      <div className="my-8 grid gap-4 sm:grid-cols-3">
-        {stats.map(([label, count]) => <section key={label} className="rounded-2xl border border-slate-200 bg-white p-6"><h2 className="text-sm text-slate-500">{label}</h2><p className="mt-3 text-3xl font-bold">{count}<span className="ml-2 text-sm font-normal text-slate-400">건</span></p></section>)}
+      <div className="my-5 grid grid-cols-3 gap-2 sm:my-8 sm:gap-4">
+        {stats.map(([label, count]) => <section key={label} className="min-w-0 rounded-xl border border-slate-200 bg-white px-3 py-4 sm:rounded-2xl sm:p-6"><h2 className="text-xs text-slate-500 sm:text-sm">{label}</h2><p className="mt-2 break-all text-2xl font-bold sm:mt-3 sm:text-3xl">{count}<span className="ml-1 text-xs font-normal text-slate-400 sm:ml-2 sm:text-sm">건</span></p></section>)}
       </div>
       <TimeSlotManager />
       <BookingTable interviews={interviews} />
