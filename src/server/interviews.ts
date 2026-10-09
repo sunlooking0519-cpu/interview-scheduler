@@ -11,6 +11,7 @@ export type InterviewReservation = {
   interview_time: string;
   status: "confirmed" | "cancelled";
   created_at: string;
+  resume_url?: string | null;
 };
 
 export async function getInterviewReservations(): Promise<InterviewReservation[]> {
@@ -18,7 +19,7 @@ export async function getInterviewReservations(): Promise<InterviewReservation[]
   const { data, error } = await supabase
     .schema("scheduler")
     .from("interviews")
-    .select("id, name, email, phone, interview_date, interview_time, status, created_at")
+    .select("id, name, email, phone, interview_date, interview_time, status, created_at, resume_url")
     .order("interview_date", { ascending: true })
     .order("interview_time", { ascending: true });
 

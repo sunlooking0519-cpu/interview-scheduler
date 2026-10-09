@@ -4,12 +4,14 @@ import { createClient } from "../../../../lib/supabase/server";
 import { isBookingDate } from "@/features/booking/dates";
 import { ALL_TIMES } from "@/features/booking/time-slots";
 import { scheduleCalendarSync } from "@/server/calendar-sync";
+import { readResumeTicket, verifyUploadedResume, removeUploadedResume } from "@/server/resumes";
 
 export type CreateInterviewInput = {
   name: string;
   phone: string;
   interviewDate: string;
   interviewTime: string;
+  resumeTicket?: string;
 };
 
 export type CreateInterviewResult =
@@ -40,6 +42,17 @@ export async function createInterview(
     return { success: false, message: "예약 가능한 시간을 선택해 주세요." };
   }
 
+  let resumePath = "";
+  let resumeUrl: string | undefined;
+  if (input.resumeTicket) {
+    try {
+      resumePath = readResumeTicket(input.resumeTicket, name, phone);
+      resumeUrl = await verifyUploadedResume(resumePath);
+    } catch {
+      if (resumePath) await removeUploadedResume(resumePath);
+      return { success: false, message: "이력서 파일을 확인할 수 없습니다. PDF 또는 Word 파일을 다시 선택해 주세요." };
+    }
+  }
   try {
     const supabase = await createClient();
     const { error } = await supabase.schema("scheduler").from("interviews").insert({
@@ -48,9 +61,11 @@ export async function createInterview(
       interview_date: input.interviewDate,
       interview_time: input.interviewTime,
       status: "confirmed",
+      ...(resumeUrl ? { resume_url: resumeUrl } : {}),
     });
 
     if (error) {
+      if (resumePath) await removeUploadedResume(resumePath);
       console.error("Supabase interview insert failed", {
         code: error.code,
         message: error.message,
@@ -73,6 +88,8 @@ export async function createInterview(
     scheduleCalendarSync();
     return { success: true };
   } catch (error) {
+    // A network timeout can occur after INSERT committed. Cleanup checks DB references.
+    if (resumePath) await removeUploadedResume(resumePath);
     console.error("Interview creation failed", error);
     return {
       success: false,

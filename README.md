@@ -94,6 +94,8 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-or-publishable-key
 
 ## 검증
 
+이력서 업로드를 배포하기 전에 [설정 안내](docs/resumes-setup.md)에 따라 `supabase/resumes-migration.sql`을 실행하세요. 공개 resumes 버킷, 최대 5MB의 PDF/Word 선택 첨부, 관리자 파일 다운로드를 지원합니다.
+
 Google 캘린더 조회·예약 자동 동기화 설정은 [설정 안내](docs/google-calendar-setup.md)를 참고하세요. SQL 적용, Google OAuth 설정 및 Vercel 서버 환경 변수 설정 후 관리자에서 계정을 연결합니다.
 
 ```sh

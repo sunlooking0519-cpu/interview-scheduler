@@ -15,6 +15,7 @@ function load(path, imports) {
     exports, FormData, console, process, Buffer, URL, URLSearchParams,
     require(name) {
       if (name === "@/server/calendar-sync" && !(name in imports)) return { scheduleCalendarSync() {} };
+      if (name === "@/server/resumes" && !(name in imports)) return {};
       if (!(name in imports)) throw new Error(`Unexpected import: ${name}`);
       return imports[name];
     },
@@ -27,6 +28,60 @@ const timeSlots = load("src/features/booking/time-slots.ts", {});
 const bookingDates = load("src/features/booking/dates.ts", {});
 const admin = { id: "admin-id", email: "admin@example.com", app_metadata: { role: "admin" } };
 const redirect = (path) => { throw new Error(`REDIRECT:${path}`); };
+
+test("resume validation enforces allowed extensions and the 5MB boundary", () => {
+  const resume = load("src/features/booking/resume.ts", {});
+  assert.equal(resume.resumeError("resume.PDF", 5 * 1024 * 1024), "");
+  assert.equal(resume.resumeError("resume.doc", 100), "");
+  assert.equal(resume.resumeError("resume.docx", 100), "");
+  assert.ok(resume.resumeError("resume.pdf", 5 * 1024 * 1024 + 1));
+  assert.ok(resume.resumeError("resume.pdf", 0));
+  assert.ok(resume.resumeError("resume.pdf.exe", 100));
+});
+
+test("resume tickets bind files to the candidate and reject tampering", () => {
+  const previous = process.env.SUPABASE_SECRET_KEY;
+  process.env.SUPABASE_SECRET_KEY = "test-resume-secret";
+  try {
+    const resume = load("src/server/resumes.ts", { "server-only": {}, "node:crypto": crypto, "../../lib/supabase/service": {}, "@/features/booking/resume": load("src/features/booking/resume.ts", {}) });
+    const path = resume.newResumePath("pdf");
+    const ticket = resume.resumeTicket(path, " 지원자 ", "01012345678");
+    assert.equal(resume.readResumeTicket(ticket, "지원자", "01012345678"), path);
+    assert.throws(() => resume.readResumeTicket(ticket, "다른사람", "01012345678"));
+    assert.throws(() => resume.readResumeTicket(ticket, "지원자", "01000000000"));
+    assert.throws(() => resume.readResumeTicket(`x${ticket}`, "지원자", "01012345678"));
+  } finally { if (previous === undefined) delete process.env.SUPABASE_SECRET_KEY; else process.env.SUPABASE_SECRET_KEY = previous; }
+});
+
+test("uploaded resumes require document signatures before a public URL is returned", async () => {
+  let file = new Blob(["%PDF-1.7\nresume"]);
+  const resume = load("src/server/resumes.ts", {
+    "server-only": {}, "node:crypto": crypto, "@/features/booking/resume": load("src/features/booking/resume.ts", {}),
+    "../../lib/supabase/service": { createServiceClient: () => ({ storage: { from(bucket) { assert.equal(bucket, "resumes"); return { download: async () => ({ data: file }), getPublicUrl: (path) => ({ data: { publicUrl: `https://storage.example/${path}` } }) }; } } }) },
+  });
+  assert.equal(await resume.verifyUploadedResume("uploads/test.pdf"), "https://storage.example/uploads/test.pdf");
+  file = new Blob(["arbitrary content"]);
+  await assert.rejects(() => resume.verifyUploadedResume("uploads/test.pdf"));
+  file = new Blob([Buffer.from("d0cf11e0a1b11ae1", "hex")]);
+  assert.ok(await resume.verifyUploadedResume("uploads/test.doc"));
+  file = new Blob([Buffer.from([0x50, 0x4b, 3, 4]), "word/document.xml"]);
+  assert.ok(await resume.verifyUploadedResume("uploads/test.docx"));
+});
+
+test("booking persists verified resume URLs and cleans files on a slot conflict", async () => {
+  for (const conflict of [false, true]) {
+    let saved, cleaned = false;
+    const action = load("src/app/(candidate)/booking/actions.ts", {
+      "@/features/booking/dates": bookingDates, "@/features/booking/time-slots": timeSlots,
+      "@/server/resumes": { readResumeTicket: () => "uploads/file.pdf", verifyUploadedResume: async () => "https://storage.example/resume.pdf", removeUploadedResume: async () => { cleaned = true; } },
+      "../../../../lib/supabase/server": { createClient: async () => ({ schema: () => ({ from: () => ({ insert: async (row) => { saved = row; return { error: conflict ? { code: "23505" } : null }; } }) }) }) },
+    });
+    const result = await action.createInterview({ name: "지원자", phone: "01012345678", interviewDate: "2027-01-15", interviewTime: "10:00", resumeTicket: "signed-ticket" });
+    assert.equal(saved.resume_url, "https://storage.example/resume.pdf");
+    assert.equal(result.success, !conflict);
+    assert.equal(cleaned, conflict);
+  }
+});
 
 test("dynamic booking dates support future months and reject invalid dates", () => {
   assert.equal(bookingDates.isBookingDate("2027-01-15"), true);
