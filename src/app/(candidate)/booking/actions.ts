@@ -3,6 +3,7 @@
 import { createClient } from "../../../../lib/supabase/server";
 import { isBookingDate } from "@/features/booking/dates";
 import { ALL_TIMES } from "@/features/booking/time-slots";
+import { scheduleCalendarSync } from "@/server/calendar-sync";
 
 export type CreateInterviewInput = {
   name: string;
@@ -69,6 +70,7 @@ export async function createInterview(
       };
     }
 
+    scheduleCalendarSync();
     return { success: true };
   } catch (error) {
     console.error("Interview creation failed", error);

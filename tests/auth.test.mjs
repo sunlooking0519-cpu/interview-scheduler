@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import ts from "typescript";
+import * as crypto from "node:crypto";
 import { NextRequest, NextResponse } from "next/server.js";
 
 function load(path, imports) {
@@ -11,8 +12,9 @@ function load(path, imports) {
   }).outputText;
   const exports = {};
   vm.runInNewContext(code, {
-    exports, FormData, console, process,
+    exports, FormData, console, process, Buffer, URL, URLSearchParams,
     require(name) {
+      if (name === "@/server/calendar-sync" && !(name in imports)) return { scheduleCalendarSync() {} };
       if (!(name in imports)) throw new Error(`Unexpected import: ${name}`);
       return imports[name];
     },
@@ -30,6 +32,88 @@ test("dynamic booking dates support future months and reject invalid dates", () 
   assert.equal(bookingDates.isBookingDate("2027-01-15"), true);
   assert.equal(bookingDates.isBookingDate("2026-02-30"), false);
   assert.equal(bookingDates.isBookingDate("2026-13-01"), false);
+});
+
+test("Google tokens are authenticated ciphertext and event IDs are stable", () => {
+  const values = { GOOGLE_CLIENT_ID: "test", GOOGLE_CLIENT_SECRET: "test", APP_URL: "https://example.com", CALENDAR_TOKEN_KEY: "ab".repeat(32) };
+  const previous = Object.fromEntries(Object.keys(values).map((key) => [key, process.env[key]]));
+  Object.assign(process.env, values);
+  try {
+    const calendar = load("src/server/google-calendar.ts", { "server-only": {}, "node:crypto": crypto, "../../lib/supabase/service": {} });
+    const encrypted = calendar.encryptToken("private-refresh-token");
+    assert.ok(!encrypted.includes("private-refresh-token"));
+    assert.equal(calendar.decryptToken(encrypted), "private-refresh-token");
+    const parts = encrypted.split(".");
+    parts[1] = Buffer.alloc(16).toString("base64url");
+    assert.throws(() => calendar.decryptToken(parts.join(".")));
+    assert.match(calendar.googleEventId("9223372036854775807"), /^[0-9a-v]{5,1024}$/);
+    assert.equal(calendar.googleEventId("2"), calendar.googleEventId("2"));
+    assert.notEqual(calendar.googleEventId("2"), calendar.googleEventId("3"));
+  } finally {
+    for (const [key, value] of Object.entries(previous)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; }
+  }
+});
+
+test("Google sync creates, updates, cancels and preserves failed or newer queue jobs", async () => {
+  for (const status of ["confirmed", "existing", "cancelled", "failure"]) {
+    const requests = [], acknowledgements = [], failures = [];
+    const jobs = [{ reservation_id: "2", version: 7 }];
+    let claimed = false;
+    const db = { rpc: async () => { const data = claimed ? [] : jobs; claimed = true; return { data }; }, from(table) {
+      if (table === "interviews") return { select() { return { eq() { return { maybeSingle: async () => ({ data: { name: "지원자", interview_date: "2026-10-16", interview_time: "11:00", status } }) }; } }; } };
+      return { delete() { return { eq(key, value) { acknowledgements.push([key, value]); return { eq: async (key2, value2) => { acknowledgements.push([key2, value2]); return {}; } }; } }; }, update(value) { failures.push(value); return { eq() { return { eq: async () => ({}) }; } }; } };
+    } };
+    const sync = load("src/server/calendar-sync.ts", {
+      "server-only": {}, "next/server": {}, "../../lib/supabase/service": { createServiceClient: () => ({ schema: () => db }) },
+      "@/server/google-calendar": {
+        getCalendarConnection: async () => ({ calendar_id: "primary" }), calendarAccessToken: async () => "token", googleEventId: () => "event-id",
+        googleRequest: async (_token, _calendar, path, init) => {
+          requests.push({ path, ...init });
+          return { ok: status !== "failure" && (status === "existing" || init.method !== "PUT"), status: status === "failure" ? 503 : status !== "existing" && init.method === "PUT" ? 404 : 200 };
+        },
+      },
+    });
+    const result = await sync.syncCalendarQueue();
+    if (status === "failure") { assert.equal(result.failed, 1); assert.equal(acknowledgements.length, 0); assert.equal(failures.length, 1); }
+    else {
+      assert.equal(result.processed, 1);
+      assert.deepEqual(acknowledgements, [["reservation_id", "2"], ["version", 7]]);
+      if (status === "cancelled") assert.equal(requests[0].method, "DELETE");
+      else {
+        assert.deepEqual(requests.map((r) => r.method), status === "existing" ? ["PUT"] : ["PUT", "POST"]);
+        const event = JSON.parse(requests.at(-1).body);
+        assert.equal(event.start.dateTime, "2026-10-16T02:00:00.000Z");
+        assert.equal(event.end.dateTime, "2026-10-16T02:30:00.000Z");
+        assert.equal(event.extendedProperties.private.reservationId, "2");
+      }
+    }
+  }
+});
+
+test("calendar sync endpoint requires the correct server secret", async () => {
+  const previous = process.env.CALENDAR_SYNC_SECRET;
+  process.env.CALENDAR_SYNC_SECRET = "s".repeat(32);
+  let calls = 0;
+  try {
+    const route = load("src/app/api/calendar/sync/route.ts", {
+      "node:crypto": crypto, "next/server": { NextResponse },
+      "@/server/calendar-sync": { syncCalendarQueue: async () => { calls++; return { processed: 1, failed: 0 }; } },
+    });
+    assert.equal((await route.POST(new NextRequest("https://example.com/api/calendar/sync"))).status, 401);
+    assert.equal(calls, 0);
+    assert.equal((await route.POST(new NextRequest("https://example.com/api/calendar/sync", { headers: { authorization: `Bearer ${process.env.CALENDAR_SYNC_SECRET}` } }))).status, 200);
+    assert.equal(calls, 1);
+  } finally { if (previous === undefined) delete process.env.CALENDAR_SYNC_SECRET; else process.env.CALENDAR_SYNC_SECRET = previous; }
+});
+
+test("Google calendar actions verify administrator access before private reads", async () => {
+  const actions = load("src/app/admin/calendar-actions.ts", {
+    "@/server/admin-auth": { requireAdmin: async () => { throw new Error("DENIED"); } },
+    "@/server/google-calendar": {}, "@/server/calendar-sync": {}, "../../../lib/supabase/service": {}, "next/cache": {},
+  });
+  await assert.rejects(() => actions.getGoogleCalendarMonth("2026-10"), /DENIED/);
+  await assert.rejects(() => actions.retryCalendarSync(), /DENIED/);
+  await assert.rejects(() => actions.disconnectGoogleCalendar(), /DENIED/);
 });
 
 test("candidate cancellation scopes RPC to id, name and phone", async () => {

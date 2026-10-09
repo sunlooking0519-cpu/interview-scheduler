@@ -2,6 +2,7 @@
 
 import { requireAdmin } from "@/server/admin-auth";
 import { revalidatePath } from "next/cache";
+import { scheduleCalendarSync } from "@/server/calendar-sync";
 
 export async function cancelAdminReservation(id: string | number): Promise<{ error: string }> {
   const { supabase } = await requireAdmin();
@@ -9,5 +10,6 @@ export async function cancelAdminReservation(id: string | number): Promise<{ err
   const { data, error } = await supabase.schema("scheduler").rpc("cancel_admin_reservation", { p_id: String(id) });
   if (error || data !== true) return { error: "예약을 취소하지 못했습니다. 이미 변경된 예약인지 확인해 주세요." };
   revalidatePath("/admin");
+  scheduleCalendarSync();
   return { error: "" };
 }

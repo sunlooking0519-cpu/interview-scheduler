@@ -88,11 +88,13 @@ NEXT_PUBLIC_SUPABASE_URL=https://your-project-ref.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-or-publishable-key
 ```
 
-`ADMIN_SESSION_SECRET`, `SUPABASE_SECRET_KEY`, `SUPABASE_SERVICE_ROLE_KEY`는 더 이상 사용하지 않습니다. 조회는 로그인한 관리자의 세션과 RLS로 수행합니다. 서비스 역할 키를 프런트엔드에 넣지 마세요.
+`ADMIN_SESSION_SECRET`은 사용하지 않습니다. 예약 조회는 로그인한 관리자의 세션과 RLS로 수행합니다. Google 캘린더 연결 정보와 동기화 큐는 서버 전용 Supabase secret/service_role 키를 사용합니다.
 
 6. `/admin/login`에서 이메일/비밀번호로 로그인합니다. 비로그인 및 일반 계정은 대시보드와 예약 조회에서 차단됩니다. 대시보드 상단 로그아웃은 현재 브라우저 세션을 종료하고 로그인 페이지로 이동합니다.
 
 ## 검증
+
+Google 캘린더 조회·예약 자동 동기화 설정은 [설정 안내](docs/google-calendar-setup.md)를 참고하세요. SQL 적용, Google OAuth 설정 및 Vercel 서버 환경 변수 설정 후 관리자에서 계정을 연결합니다.
 
 ```sh
 pnpm test

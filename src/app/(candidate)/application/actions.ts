@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "../../../../lib/supabase/server";
 import { isBookingDate } from "@/features/booking/dates";
 import { ALL_TIMES } from "@/features/booking/time-slots";
+import { scheduleCalendarSync } from "@/server/calendar-sync";
 
 export type CandidateIdentity = { name: string; phone: string };
 export type CandidateReservation = { id: string | number; interview_date: string; interview_time: string; status: "confirmed" | "cancelled" };
@@ -22,6 +23,7 @@ export async function cancelCandidateReservation(input: CandidateIdentity, id: s
     const { data, error } = await supabase.schema("scheduler").rpc("cancel_candidate_reservation", { p_name: candidate.name, p_phone: candidate.phone, p_id: String(id) });
     if (error || data !== true) return { error: "취소할 예약을 찾을 수 없거나 이미 취소되었습니다." };
     revalidatePath("/admin");
+    scheduleCalendarSync();
     return { error: "" };
   } catch { return { error: "예약 취소 서비스에 연결할 수 없습니다." }; }
 }
@@ -57,6 +59,7 @@ export async function updateCandidateReservation(input: CandidateIdentity, id: s
     if (error?.code === "P0001") return { error: "선택한 시간이 마감되었습니다. 다른 시간을 선택해 주세요." };
     if (error || data !== true) return { error: "수정할 예약을 찾을 수 없거나 수정할 수 없는 상태입니다." };
     revalidatePath("/admin");
+    scheduleCalendarSync();
     return { error: "" };
   } catch {
     return { error: "예약 변경 서비스에 연결할 수 없습니다." };

@@ -5,9 +5,11 @@ import { requireAdmin } from "@/server/admin-auth";
 import { getInterviewReservations, type InterviewReservation } from "@/server/interviews";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
-export default async function AdminPage() {
+export default async function AdminPage({ searchParams }: { searchParams: Promise<{ calendar?: string }> }) {
   const { user } = await requireAdmin();
+  const { calendar } = await searchParams;
   let interviews: InterviewReservation[] = [];
   let loadError = "";
 
@@ -42,7 +44,10 @@ export default async function AdminPage() {
       <div className="my-5 grid grid-cols-3 gap-2 sm:my-8 sm:gap-4">
         {stats.map(([label, count]) => <section key={label} className="min-w-0 rounded-xl border border-slate-200 bg-white px-3 py-4 sm:rounded-2xl sm:p-6"><h2 className="text-xs text-slate-500 sm:text-sm">{label}</h2><p className="mt-2 break-all text-2xl font-bold sm:mt-3 sm:text-3xl">{count}<span className="ml-1 text-xs font-normal text-slate-400 sm:ml-2 sm:text-sm">건</span></p></section>)}
       </div>
-      <TimeSlotManager />
+      {calendar === "connected" && <p role="status" className="mb-4 rounded-xl bg-emerald-50 p-4 text-sm text-emerald-800">Google 캘린더를 연결했습니다. 기존 예약도 순차적으로 동기화됩니다.</p>}
+      {calendar === "error" && <p role="alert" className="mb-4 rounded-xl bg-red-50 p-4 text-sm text-red-700">Google 연결에 실패했습니다. OAuth 설정과 동의 권한을 확인하고 다시 연결해 주세요.</p>}
+      {calendar === "owner" && <p role="alert" className="mb-4 rounded-xl bg-amber-50 p-4 text-sm text-amber-800">다른 관리자의 Google 계정이 연결되어 있습니다. 연결한 관리자가 먼저 연결을 해제해야 합니다.</p>}
+      <TimeSlotManager interviews={interviews} />
       <BookingTable interviews={interviews} />
     </>
   );
