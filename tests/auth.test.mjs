@@ -24,6 +24,32 @@ const { isAdmin } = load("lib/supabase/admin-role.ts", {});
 const admin = { id: "admin-id", email: "admin@example.com", app_metadata: { role: "admin" } };
 const redirect = (path) => { throw new Error(`REDIRECT:${path}`); };
 
+test("candidate review scopes RPC requests and rejects invalid updates", async () => {
+  const calls = [];
+  const actions = load("src/app/(candidate)/application/actions.ts", {
+    "next/cache": { revalidatePath() {} },
+    "../../../../lib/supabase/server": { createClient: async () => ({ schema(name) {
+      assert.equal(name, "scheduler");
+      return { rpc: async (fn, args) => {
+        calls.push({ fn, args });
+        return { data: fn === "find_candidate_reservations" ? [] : true, error: null };
+      } };
+    } }) },
+    "@/features/booking/demo-data": { DEMO_DATES: ["2026-10-12"], DEMO_TIMES: ["10:00"] },
+  });
+  const candidate = { name: " 홍길동 ", phone: "010-1234-5678" };
+  assert.equal((await actions.findCandidateReservations(candidate)).error, "");
+  assert.equal(calls[0].args.p_name, "홍길동");
+  assert.equal(calls[0].args.p_phone, candidate.phone);
+  const id = "12345678-1234-1234-1234-123456789012";
+  assert.equal((await actions.updateCandidateReservation(candidate, id, "2026-10-12", "10:00")).error, "");
+  assert.equal(calls[1].args.p_id, id);
+  assert.equal(calls[1].args.p_phone, candidate.phone);
+  assert.ok((await actions.updateCandidateReservation(candidate, id, "2026-10-13", "10:00")).error);
+  assert.ok((await actions.findCandidateReservations({ name: "", phone: "" })).error);
+  assert.equal(calls.length, 2);
+});
+
 test("candidate booking accepts only name and phone and omits email in insert", async () => {
   let inserted;
   const { createInterview } = load("src/app/(candidate)/booking/actions.ts", {

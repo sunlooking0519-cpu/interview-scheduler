@@ -56,6 +56,8 @@ pnpm build
 
 ## Supabase 설정
 
+`지원서 확인·수정`은 입력한 이름·전화번호를 sessionStorage에 보관한 뒤 `/application`으로 이동합니다. `supabase/candidate-reservations-migration.sql`을 실행하면 해당 두 값과 일치하는 예약의 일정·상태를 조회하고 확정 예약의 날짜·시간을 변경할 수 있습니다. 전화번호의 공백/하이픈은 조회 시 무시합니다. 별도 지원서 테이블이 없으므로 현재는 면접 예약 내역만 제공합니다. 이름·전화번호 대조는 휴대전화 소유 확인이 아니므로 두 값을 아는 사람도 조회·수정할 수 있습니다. 본인 인증이 필요한 운영에서는 SMS 인증 등을 추가해야 합니다.
+
 기존 DB는 지원자 이메일 입력 제거 배포 전에 `supabase/optional-candidate-email-migration.sql`을 실행하세요. 이메일 컬럼의 NOT NULL 및 기본값을 제거하며 기존 이메일 데이터는 보존합니다. 새 예약은 이메일을 생략하고, HR 목록은 이메일 없이 전화번호만 있는 예약도 표시합니다. 관리자 Auth 이메일 로그인은 계속 사용합니다.
 
 예약은 `scheduler.interviews`에 저장되며 관리자는 Supabase Auth 이메일/비밀번호로 로그인합니다. `@supabase/ssr`의 쿠키 세션을 서버와 브라우저에서 공유하고 Next.js Proxy가 `/admin` 요청의 세션을 갱신합니다. 서버는 `auth.getUser()`로 유효한 사용자와 관리자 권한을 다시 검증합니다.
