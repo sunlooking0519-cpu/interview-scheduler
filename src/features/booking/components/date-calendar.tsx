@@ -7,7 +7,7 @@ import { formatInterviewDate } from "@/lib/date";
 type Props = { selected: string; available: string[]; disabled?: boolean; onSelect: (date: string) => void };
 
 export function DateCalendar({ selected, available, disabled, onSelect }: Props) {
-  const [month, setMonth] = useState((selected || available[0] || koreaToday()).slice(0, 7));
+  const [month, setMonth] = useState((selected || koreaToday()).slice(0, 7));
   const [year, number] = month.split("-").map(Number);
   const first = new Date(Date.UTC(year, number - 1, 1)).getUTCDay();
   const days = new Date(Date.UTC(year, number, 0)).getUTCDate();
