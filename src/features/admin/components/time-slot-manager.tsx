@@ -81,7 +81,7 @@ export function TimeSlotManager() {
 
   return <section className="mb-8 rounded-2xl border border-slate-200 bg-white p-4 md:p-6">
     <h2 className="text-lg font-bold">예약 가능 시간 관리</h2>
-    <p className="mt-2 text-sm text-slate-500">날짜를 선택하고 시간 버튼을 눌러 예약을 열거나 닫으세요. 즉시 저장되며 기존 예약은 유지됩니다.</p>
+    <p className="mt-2 text-sm text-slate-500">모든 시간은 기본적으로 닫혀 있습니다. 직접 연 시간만 지원자가 예약할 수 있습니다. 즉시 저장되며 기존 예약은 유지됩니다.</p>
     <form className="mt-5 flex flex-wrap items-end gap-3" onSubmit={(event) => { event.preventDefault(); void addDate(); }}>
       <label className="min-w-0 flex-1 text-sm font-medium">날짜 추가<input type="date" value={newDate} min={koreaToday()} required disabled={saving} onChange={(event) => setNewDate(event.target.value)} className="mt-2 min-h-11 w-full min-w-0 rounded-xl border p-3 text-base" /></label>
       <button disabled={saving || !newDate} className="min-h-11 rounded-xl bg-indigo-600 px-4 text-sm font-semibold text-white disabled:opacity-50">추가</button>

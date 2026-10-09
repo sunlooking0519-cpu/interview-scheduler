@@ -5,6 +5,10 @@ export const ALL_TIMES = Array.from({ length: 25 }, (_, index) => {
 
 export type TimeSlot = { interview_time: string; enabled: boolean; booked: boolean };
 
+export function openTimes(slots: TimeSlot[]): string[] {
+  return slots.filter((slot) => slot.enabled === true && slot.booked === false).map((slot) => slot.interview_time);
+}
+
 export function displayTime(time: string) {
   const [hour, minute] = time.split(":");
   return `${Number(hour) % 12 || 12}:${minute}`;

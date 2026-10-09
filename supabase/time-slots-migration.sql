@@ -8,8 +8,7 @@ create table if not exists scheduler.interview_time_slots (
 );
 
 insert into scheduler.interview_time_slots (interview_date, interview_time, enabled)
-select d::date, to_char(t, 'HH24:MI'),
-  to_char(t, 'HH24:MI') in ('10:00', '10:30', '11:00', '11:30', '14:00', '14:30', '15:00', '15:30', '16:00', '16:30')
+select d::date, to_char(t, 'HH24:MI'), false
 from generate_series('2026-10-12'::timestamp, '2026-10-16'::timestamp, interval '1 day') d
 cross join generate_series('2026-10-12 09:00'::timestamp, '2026-10-12 21:00'::timestamp, interval '30 minutes') t
 on conflict do nothing;

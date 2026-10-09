@@ -74,6 +74,18 @@ test("fixed time grid spans 09:00 to 21:00 and displays AM/PM labels", () => {
   assert.equal(timeSlots.displayTime("18:30"), "6:30");
 });
 
+test("only explicitly opened, unbooked times can be selected", () => {
+  const open = timeSlots.openTimes([
+    { interview_time: "09:00", enabled: false, booked: false },
+    { interview_time: "09:30", enabled: true, booked: false },
+    { interview_time: "10:00", enabled: true, booked: true },
+    { interview_time: "10:30", booked: false },
+  ]);
+  assert.equal(open.length, 1);
+  assert.equal(open[0], "09:30");
+  assert.equal(timeSlots.openTimes([]).length, 0);
+});
+
 test("admin time controls authorize before saving and reject unsupported slots", async () => {
   let authorized = 0;
   const saved = [];
