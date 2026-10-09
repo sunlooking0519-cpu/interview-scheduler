@@ -36,7 +36,7 @@ test("fixed time grid spans 09:00 to 21:00 and displays AM/PM labels", () => {
 test("admin time controls authorize before saving and reject unsupported slots", async () => {
   let authorized = 0;
   const saved = [];
-  const { setTimeSlot } = load("src/app/admin/time-actions.ts", {
+  const { setTimeSlot, closeAllTimeSlots } = load("src/app/admin/time-actions.ts", {
     "@/server/admin-auth": { requireAdmin: async () => {
       authorized++;
       return { supabase: { schema(name) {
@@ -57,6 +57,11 @@ test("admin time controls authorize before saving and reject unsupported slots",
   assert.ok((await setTimeSlot("2026-10-12", "21:30", true)).error);
   assert.equal(authorized, 2);
   assert.equal(saved.length, 1);
+  assert.equal((await closeAllTimeSlots("2026-10-12")).error, "");
+  assert.equal(saved[1].length, 25);
+  assert.equal(saved[1].every((row) => row.interview_date === "2026-10-12" && row.enabled === false), true);
+  assert.ok((await closeAllTimeSlots("2026-10-13")).error);
+  assert.equal(saved.length, 2);
 });
 
 test("availability requests use date-scoped RPC and fail closed", async () => {

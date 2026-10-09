@@ -5,6 +5,16 @@ import { DEMO_DATES } from "@/features/booking/demo-data";
 import { ALL_TIMES } from "@/features/booking/time-slots";
 import { revalidatePath } from "next/cache";
 
+export async function closeAllTimeSlots(date: string): Promise<{ error: string }> {
+  const { supabase } = await requireAdmin();
+  if (!DEMO_DATES.includes(date)) return { error: "날짜를 확인해 주세요." };
+  const rows = ALL_TIMES.map((time) => ({ interview_date: date, interview_time: time, enabled: false }));
+  const { error } = await supabase.schema("scheduler").from("interview_time_slots").upsert(rows, { onConflict: "interview_date,interview_time" });
+  if (error) return { error: "전체 시간 닫기에 실패했습니다. 잠시 후 다시 시도해 주세요." };
+  revalidatePath("/admin");
+  return { error: "" };
+}
+
 export async function setTimeSlot(date: string, time: string, enabled: boolean): Promise<{ error: string }> {
   const { supabase } = await requireAdmin();
   if (!DEMO_DATES.includes(date) || !ALL_TIMES.includes(time) || typeof enabled !== "boolean") return { error: "날짜와 시간을 확인해 주세요." };

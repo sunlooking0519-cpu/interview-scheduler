@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { DEMO_DATES } from "@/features/booking/demo-data";
 import { ALL_TIMES, displayTime, type TimeSlot } from "@/features/booking/time-slots";
 import { getTimeSlots } from "@/app/(candidate)/booking/availability";
-import { setTimeSlot } from "@/app/admin/time-actions";
+import { setTimeSlot, closeAllTimeSlots } from "@/app/admin/time-actions";
 
 export function TimeSlotManager() {
   const [date, setDate] = useState(DEMO_DATES[0]);
@@ -37,10 +37,23 @@ export function TimeSlotManager() {
     finally { busy.current = false; setSaving(false); }
   }
 
+  async function closeAll() {
+    if (busy.current || loading || error) return;
+    busy.current = true; setSaving(true); setMessage("");
+    try {
+      const result = await closeAllTimeSlots(date);
+      if (result.error) { setError(result.error); return; }
+      setSlots((rows) => rows.map((slot) => ({ ...slot, enabled: false })));
+      setMessage(`${date}의 모든 예약 시간을 닫았습니다. 기존 예약은 유지됩니다.`);
+    } catch { setError("전체 시간 닫기에 실패했습니다."); }
+    finally { busy.current = false; setSaving(false); }
+  }
+
   return <section className="mb-8 rounded-2xl border border-slate-200 bg-white p-6">
     <h2 className="text-lg font-bold">예약 가능 시간 관리</h2>
     <p className="mt-2 text-sm text-slate-500">날짜를 선택하고 시간 버튼을 눌러 예약을 열거나 닫으세요. 즉시 저장되며 기존 예약은 유지됩니다.</p>
     <label className="mt-4 block text-sm font-medium">날짜<select value={date} disabled={saving} onChange={(event) => { setDate(event.target.value); setLoading(true); setError(""); setMessage(""); }} className="ml-3 rounded-lg border p-2">{DEMO_DATES.map((value) => <option key={value}>{value}</option>)}</select></label>
+    <button type="button" disabled={loading || saving || !!error} onClick={() => void closeAll()} className="mt-4 rounded-xl border border-red-200 px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50">선택한 날짜 전체 닫기</button>
     {loading && <p role="status" className="mt-4">불러오는 중...</p>}
     {error && <p role="alert" className="mt-4 text-sm text-red-600">{error}</p>}
     {message && <p role="status" className="mt-4 text-sm text-emerald-700">{message}</p>}
