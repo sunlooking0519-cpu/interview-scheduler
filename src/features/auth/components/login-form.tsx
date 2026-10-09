@@ -44,7 +44,7 @@ export function LoginForm() {
   }
 
   return (
-    <form className="mt-8 space-y-5" aria-busy={isPending} onChange={() => setError("")} onSubmit={handleSubmit}>
+    <form className="mt-6 space-y-5 [&_input]:text-base" aria-busy={isPending} onChange={() => setError("")} onSubmit={handleSubmit}>
       <label htmlFor="candidate-name" className="block text-sm font-medium">사용자 이름<input id="candidate-name" name="name" type="text" autoComplete="name" required maxLength={60} placeholder="사용자 이름을 입력해 주세요" className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3" /></label>
       <label htmlFor="candidate-phone" className="block text-sm font-medium">전화번호<input id="candidate-phone" name="phone" type="tel" inputMode="tel" autoComplete="tel" required minLength={8} maxLength={20} pattern="[0-9+() -]{8,20}" placeholder="010-1234-5678" className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3" /></label>
       <Button type="submit" disabled={isPending} className="w-full">면접 예약하기</Button>

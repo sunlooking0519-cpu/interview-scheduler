@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "../../../../lib/supabase/server";
-import { DEMO_DATES } from "@/features/booking/demo-data";
+import { isBookingDate } from "@/features/booking/dates";
 import { ALL_TIMES } from "@/features/booking/time-slots";
 
 export type CandidateIdentity = { name: string; phone: string };
@@ -12,6 +12,18 @@ function identity(input: CandidateIdentity) {
   const name = typeof input?.name === "string" ? input.name.trim() : "";
   const phone = typeof input?.phone === "string" ? input.phone.trim() : "";
   return name && name.length <= 60 && /^[0-9+() -]{8,20}$/.test(phone) ? { name, phone } : null;
+}
+
+export async function cancelCandidateReservation(input: CandidateIdentity, id: string | number): Promise<{ error: string }> {
+  const candidate = identity(input);
+  if (!candidate || !/^[1-9][0-9]{0,18}$/.test(String(id))) return { error: "예약 정보를 다시 확인해 주세요." };
+  try {
+    const supabase = await createClient();
+    const { data, error } = await supabase.schema("scheduler").rpc("cancel_candidate_reservation", { p_name: candidate.name, p_phone: candidate.phone, p_id: String(id) });
+    if (error || data !== true) return { error: "취소할 예약을 찾을 수 없거나 이미 취소되었습니다." };
+    revalidatePath("/admin");
+    return { error: "" };
+  } catch { return { error: "예약 취소 서비스에 연결할 수 없습니다." }; }
 }
 
 export async function findCandidateReservations(input: CandidateIdentity): Promise<{ data: CandidateReservation[]; error: string }> {
@@ -33,7 +45,7 @@ export async function updateCandidateReservation(input: CandidateIdentity, id: s
   if (!/^[1-9][0-9]{0,18}$/.test(reservationId) || BigInt(reservationId) > BigInt("9223372036854775807")) {
     return { error: "예약 ID를 확인할 수 없습니다. 예약 내역을 다시 조회해 주세요." };
   }
-  if (!candidate || !DEMO_DATES.includes(date) || !ALL_TIMES.includes(time)) {
+  if (!candidate || !isBookingDate(date) || !ALL_TIMES.includes(time)) {
     return { error: "입력한 정보와 면접 일정을 확인해 주세요." };
   }
   try {

@@ -1,7 +1,7 @@
 "use server";
 
 import { createClient } from "../../../../lib/supabase/server";
-import { DEMO_DATES } from "@/features/booking/demo-data";
+import { isBookingDate } from "@/features/booking/dates";
 import { ALL_TIMES } from "@/features/booking/time-slots";
 
 export type CreateInterviewInput = {
@@ -31,7 +31,7 @@ export async function createInterview(
     return { success: false, message: "전화번호를 확인해 주세요." };
   }
 
-  if (!DEMO_DATES.includes(input.interviewDate)) {
+  if (!isBookingDate(input.interviewDate)) {
     return { success: false, message: "예약 가능한 날짜를 선택해 주세요." };
   }
 

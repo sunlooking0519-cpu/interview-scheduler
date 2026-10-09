@@ -4,9 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { findCandidateReservations, updateCandidateReservation, type CandidateIdentity, type CandidateReservation } from "@/app/(candidate)/application/actions";
-import { DEMO_DATES } from "@/features/booking/demo-data";
+import { BookingCalendar } from "@/features/booking/components/booking-calendar";
 import { AvailableTimeButtons } from "@/features/booking/components/available-time-buttons";
 import { formatInterviewDate } from "@/lib/date";
+import { CancelReservationButton } from "@/features/booking/components/cancel-reservation-button";
 
 export function ApplicationReview() {
   const router = useRouter();
@@ -82,17 +83,8 @@ export function ApplicationReview() {
     {reservations.map((row) => <form key={row.id} className="space-y-4 rounded-2xl border border-slate-200 p-5" onSubmit={(event) => { event.preventDefault(); void save(row); }}>
       <p className="font-semibold">면접 예약 · {row.status === "confirmed" ? "확정" : "취소"}</p>
       <fieldset disabled={saving || row.status !== "confirmed"} className="space-y-6">
-        <legend className="mb-3 text-sm font-semibold">면접 날짜 · 2026년 10월</legend>
-        <div className="grid grid-cols-7 gap-2 text-center">
-          {["일", "월", "화", "수", "목", "금", "토"].map((day) => <span key={day} className="py-2 text-xs text-slate-500">{day}</span>)}
-          {Array.from({ length: 4 }, (_, i) => <span key={`blank-${i}`} />)}
-          {Array.from({ length: 31 }, (_, i) => {
-            const date = `2026-10-${String(i + 1).padStart(2, "0")}`;
-            const selected = row.interview_date === date;
-            const available = DEMO_DATES.includes(date);
-            return <button type="button" key={date} disabled={!available} aria-label={formatInterviewDate(date)} aria-pressed={selected} onClick={() => change(row.id, "interview_date", date)} className={`rounded-xl py-3 text-sm focus-visible:outline-2 focus-visible:outline-indigo-600 ${selected ? "bg-indigo-600 font-bold text-white" : available ? "bg-indigo-50 font-semibold text-indigo-700 hover:bg-indigo-100" : "text-slate-300"}`}>{i + 1}</button>;
-          })}
-        </div>
+        <legend className="mb-3 text-sm font-semibold">면접 날짜</legend>
+        <BookingCalendar selected={row.interview_date} disabled={saving || row.status !== "confirmed"} onSelect={(value) => change(row.id, "interview_date", value)} />
         <div>
           <h3 className="text-sm font-semibold">면접 시간 · 30분</h3>
           <p className="mt-2 text-sm text-slate-500">선택한 일정: {formatInterviewDate(row.interview_date)} · {row.interview_time} (KST)</p>
@@ -100,6 +92,7 @@ export function ApplicationReview() {
         </div>
       </fieldset>
       {row.status === "confirmed" && <button disabled={saving} className="rounded-xl bg-indigo-600 px-5 py-3 text-sm font-semibold text-white disabled:bg-slate-300">{saving ? "저장 중..." : "변경 저장"}</button>}
+      {row.status === "confirmed" && candidate && <CancelReservationButton id={row.id} candidate={candidate} disabled={saving} onCancelled={() => { setReservations((rows) => rows.map((value) => value.id === row.id ? { ...value, status: "cancelled" } : value)); setMessage("예약이 취소되었습니다."); }} />}
     </form>)}
     <Link href="/login" className="inline-block text-sm font-semibold text-indigo-600 hover:underline">지원하기로 돌아가기</Link>
   </div>;

@@ -37,7 +37,7 @@ export function AdminLoginForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} aria-busy={isPending} className="mt-8 space-y-5">
+    <form onSubmit={handleSubmit} aria-busy={isPending} className="mt-8 space-y-5 [&_input]:text-base">
       <label htmlFor="admin-email" className="block text-sm font-medium">
         이메일(E-mail)
         <input id="admin-email" name="email" type="email" autoComplete="username" required maxLength={254} placeholder="admin@example.com" className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3" />
