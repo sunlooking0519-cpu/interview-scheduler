@@ -86,8 +86,12 @@ export function ApplicationReview() {
         <legend className="mb-3 text-sm font-semibold">면접 날짜</legend>
         <BookingCalendar selected={row.interview_date} disabled={saving || row.status !== "confirmed"} onSelect={(value) => change(row.id, "interview_date", value)} />
         <div>
+          <div aria-live="polite" aria-atomic="true" className="mb-5 rounded-xl border border-indigo-200 bg-indigo-50 p-4 sm:p-5">
+            <p className="text-sm font-semibold text-indigo-700">선택한 일정</p>
+            <p className="mt-2 text-lg font-bold leading-7 text-slate-900 sm:text-xl">{formatInterviewDate(row.interview_date)}</p>
+            <p className="mt-1 text-2xl font-bold tracking-tight text-indigo-700 sm:text-3xl">{row.interview_time}<span className="ml-2 text-sm font-medium tracking-normal text-indigo-600">한국 표준시(KST)</span></p>
+          </div>
           <h3 className="text-sm font-semibold">면접 시간 · 30분</h3>
-          <p className="mt-2 text-sm text-slate-500">선택한 일정: {formatInterviewDate(row.interview_date)} · {row.interview_time} (KST)</p>
           <AvailableTimeButtons key={`${row.id}-${originals[String(row.id)]?.date}-${originals[String(row.id)]?.time}`} date={row.interview_date} selected={row.interview_time} originalDate={row.status === "confirmed" ? originals[String(row.id)]?.date : undefined} originalTime={originals[String(row.id)]?.time} disabled={saving || row.status !== "confirmed"} onSelect={(time) => change(row.id, "interview_time", time)} />
         </div>
       </fieldset>
