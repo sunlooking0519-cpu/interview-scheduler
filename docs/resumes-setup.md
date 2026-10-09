@@ -2,6 +2,12 @@
 
 배포 전에 Supabase SQL Editor에서 `supabase/resumes-migration.sql` 전체를 실행합니다. `scheduler.interviews.resume_url` nullable 컬럼과 Public `resumes` 버킷을 생성합니다. 기존 예약은 파일 없이 유지됩니다. 파일 첨부는 선택입니다.
 
+초기 버전 SQL을 이미 실행했다면 아래 권한 쿼리를 추가로 실행하세요. 기존 관리자 인증 SQL은 컬럼별 INSERT 권한을 사용하므로 새 컬럼에도 권한이 필요합니다.
+
+```sql
+grant insert (resume_url) on scheduler.interviews to anon, authenticated;
+```
+
 버킷은 최대 5MB(5,242,880바이트), PDF 및 Word MIME 형식을 허용합니다. Storage의 프로젝트 전역 파일 크기 제한도 5MB 이상이어야 합니다. 이미 `resumes` 버킷이 있으면 이 SQL은 해당 버킷을 공개로 변경합니다. 공개 URL을 아는 사람은 로그인 없이 파일에 접근할 수 있습니다.
 
 Vercel에는 기존 서버 환경 변수 `SUPABASE_SECRET_KEY`(또는 `SUPABASE_SERVICE_ROLE_KEY`)가 필요합니다. 프런트엔드에는 기존 public URL과 anon/publishable key만 사용합니다. 추가 패키지나 환경 변수는 필요하지 않습니다.
