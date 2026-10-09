@@ -7,7 +7,7 @@ import { createInterview } from "@/app/(candidate)/booking/actions";
 import { DEMO_DATES, DEMO_TIMES } from "@/features/booking/demo-data";
 import { formatInterviewDate } from "@/lib/date";
 
-type Candidate = { name: string; email: string; phone: string };
+type Candidate = { name: string; phone: string };
 
 export function BookingPicker() {
   const [date, setDate] = useState("");
@@ -26,14 +26,15 @@ export function BookingPicker() {
       candidate = null;
     }
 
-    if (!candidate?.name || !candidate.email || !candidate.phone) {
+    if (typeof candidate?.name !== "string" || !candidate.name.trim() || typeof candidate.phone !== "string" || !candidate.phone.trim()) {
       setErrorMessage("지원자 정보가 없습니다. 로그인 화면에서 정보를 다시 입력해 주세요.");
       return;
     }
 
     setIsSubmitting(true);
     const result = await createInterview({
-      ...candidate,
+      name: candidate.name,
+      phone: candidate.phone,
       interviewDate: date,
       interviewTime: time,
     });

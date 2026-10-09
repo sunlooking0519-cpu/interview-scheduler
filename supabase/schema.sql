@@ -4,7 +4,7 @@ create schema if not exists scheduler;
 create table if not exists scheduler.interviews (
   id uuid primary key default gen_random_uuid(),
   name text not null check (char_length(name) between 1 and 60),
-  email text not null check (char_length(email) <= 254 and email ~* '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$'),
+  email text check (char_length(email) <= 254 and email ~* '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$'),
   phone text not null check (char_length(phone) between 8 and 20 and phone ~ '^[0-9+() -]+$'),
   interview_date date not null,
   interview_time text not null check (interview_time ~ '^([01][0-9]|2[0-3]):(00|30)$'),

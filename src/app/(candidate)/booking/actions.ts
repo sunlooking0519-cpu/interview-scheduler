@@ -5,7 +5,6 @@ import { DEMO_DATES, DEMO_TIMES } from "@/features/booking/demo-data";
 
 export type CreateInterviewInput = {
   name: string;
-  email: string;
   phone: string;
   interviewDate: string;
   interviewTime: string;
@@ -15,22 +14,16 @@ export type CreateInterviewResult =
   | { success: true }
   | { success: false; message: string };
 
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_PATTERN = /^[0-9+() -]{8,20}$/;
 
 export async function createInterview(
   input: CreateInterviewInput,
 ): Promise<CreateInterviewResult> {
   const name = input.name.trim();
-  const email = input.email.trim().toLowerCase();
   const phone = input.phone.trim();
 
   if (!name || name.length > 60) {
     return { success: false, message: "지원자 이름을 확인해 주세요." };
-  }
-
-  if (email.length > 254 || !EMAIL_PATTERN.test(email)) {
-    return { success: false, message: "이메일 주소를 확인해 주세요." };
   }
 
   if (!PHONE_PATTERN.test(phone)) {
@@ -49,7 +42,6 @@ export async function createInterview(
     const supabase = await createClient();
     const { error } = await supabase.schema("scheduler").from("interviews").insert({
       name,
-      email,
       phone,
       interview_date: input.interviewDate,
       interview_time: input.interviewTime,

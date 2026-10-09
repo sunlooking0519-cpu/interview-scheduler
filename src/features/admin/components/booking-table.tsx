@@ -44,7 +44,7 @@ export function BookingTable({ interviews }: { interviews: InterviewReservation[
           ) : interviews.map((interview) => (
             <tr key={interview.id} className="border-b border-slate-100 last:border-0">
               <td className="px-6 py-5 font-medium text-slate-900">{interview.name}</td>
-              <td className="px-6 py-5"><a href={`mailto:${interview.email}`} className="block text-indigo-600 hover:underline">{interview.email}</a><a href={`tel:${interview.phone}`} className="mt-1 block text-slate-500 hover:text-slate-700">{interview.phone}</a></td>
+              <td className="px-6 py-5">{interview.email && <a href={`mailto:${interview.email}`} className="block text-indigo-600 hover:underline">{interview.email}</a>}<a href={`tel:${interview.phone}`} className="block text-slate-500 hover:text-slate-700">{interview.phone}</a></td>
               <td className="px-6 py-5">{formatDate(interview.interview_date)} · {interview.interview_time}</td>
               <td className="px-6 py-5"><span className={`rounded-full px-3 py-1 text-xs ${interview.status === "confirmed" ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"}`}>{STATUS_LABELS[interview.status]}</span></td>
               <td className="px-6 py-5 text-slate-500">{formatCreatedAt(interview.created_at)}</td>

@@ -5,7 +5,7 @@ import { requireAdmin } from "@/server/admin-auth";
 export type InterviewReservation = {
   id: string;
   name: string;
-  email: string;
+  email: string | null;
   phone: string;
   interview_date: string;
   interview_time: string;

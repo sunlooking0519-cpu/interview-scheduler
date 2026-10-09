@@ -24,6 +24,30 @@ const { isAdmin } = load("lib/supabase/admin-role.ts", {});
 const admin = { id: "admin-id", email: "admin@example.com", app_metadata: { role: "admin" } };
 const redirect = (path) => { throw new Error(`REDIRECT:${path}`); };
 
+test("candidate booking accepts only name and phone and omits email in insert", async () => {
+  let inserted;
+  const { createInterview } = load("src/app/(candidate)/booking/actions.ts", {
+    "../../../../lib/supabase/server": { createClient: async () => ({
+      schema(name) {
+        assert.equal(name, "scheduler");
+        return { from(table) {
+          assert.equal(table, "interviews");
+          return { insert: async (row) => { inserted = row; return { error: null }; } };
+        } };
+      },
+    }) },
+    "@/features/booking/demo-data": { DEMO_DATES: ["2026-10-12"], DEMO_TIMES: ["10:00"] },
+  });
+  const input = { name: " 홍길동 ", phone: " 010-1234-5678 ", interviewDate: "2026-10-12", interviewTime: "10:00" };
+  assert.equal((await createInterview(input)).success, true);
+  assert.equal(inserted.name, "홍길동");
+  assert.equal(inserted.phone, "010-1234-5678");
+  assert.equal(Object.hasOwn(inserted, "email"), false);
+  inserted = undefined;
+  assert.equal((await createInterview({ ...input, phone: "invalid" })).success, false);
+  assert.equal(inserted, undefined);
+});
+
 test("only trusted app_metadata grants administrator access", () => {
   assert.equal(isAdmin(admin), true);
   assert.equal(isAdmin({ app_metadata: { role: "super_admin" } }), true);
