@@ -23,7 +23,7 @@ export async function createClient() {
           });
         } catch {
           // Server Component에서는 쿠키를 쓸 수 없습니다.
-          // 인증 토큰 갱신이 필요해지면 Next.js Proxy를 추가합니다.
+          // 세션 갱신 쿠키는 Next.js Proxy에서 응답에 반영합니다.
         }
       },
     },

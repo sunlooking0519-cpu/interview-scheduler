@@ -1,12 +1,14 @@
 import "server-only";
 
 import { redirect } from "next/navigation";
-import { getAdminSession } from "@/server/admin-session";
+import { createClient } from "../../lib/supabase/server";
+import { isAdmin } from "../../lib/supabase/admin-role";
 
-export async function requireSuperAdmin() {
-  const session = await getAdminSession();
-  if (!session) {
+export async function requireAdmin() {
+  const supabase = await createClient();
+  const { data: { user }, error } = await supabase.auth.getUser();
+  if (error || !user || !isAdmin(user)) {
     redirect("/admin/login");
   }
-  return session;
+  return { user, supabase };
 }

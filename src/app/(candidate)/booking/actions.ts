@@ -47,7 +47,7 @@ export async function createInterview(
 
   try {
     const supabase = await createClient();
-    const { error } = await supabase.from("interviews").insert({
+    const { error } = await supabase.schema("scheduler").from("interviews").insert({
       name,
       email,
       phone,

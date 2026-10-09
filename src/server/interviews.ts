@@ -1,6 +1,6 @@
 import "server-only";
 
-import { createAdminClient } from "../../lib/supabase/admin";
+import { requireAdmin } from "@/server/admin-auth";
 
 export type InterviewReservation = {
   id: string;
@@ -14,11 +14,11 @@ export type InterviewReservation = {
 };
 
 export async function getInterviewReservations(): Promise<InterviewReservation[]> {
-  const supabase = createAdminClient();
+  const { supabase } = await requireAdmin();
   const { data, error } = await supabase
+    .schema("scheduler")
     .from("interviews")
     .select("id, name, email, phone, interview_date, interview_time, status, created_at")
-    .eq("role", "candidate")
     .order("interview_date", { ascending: true })
     .order("interview_time", { ascending: true });
 
