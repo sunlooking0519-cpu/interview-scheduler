@@ -93,10 +93,10 @@ export function TimeSlotManager() {
     {message && <p role="status" className="mt-4 text-sm text-emerald-700">{message}</p>}
     {[{ label: "오전", times: ALL_TIMES.filter((time) => time < "12:00") }, { label: "오후", times: ALL_TIMES.filter((time) => time >= "12:00") }].map(({ label, times }) => <div key={label} className="mt-5">
       <p className="mb-3 text-sm text-slate-500">{label}</p>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">{times.map((time) => {
+      <div className="grid grid-cols-4 gap-2 sm:gap-3">{times.map((time) => {
         const slot = slots.find((value) => value.interview_time === time);
-        return <button type="button" key={time} disabled={loading || saving || !!error} aria-pressed={slot?.enabled ?? false} onClick={() => void toggle(time)} className={`rounded-xl border px-2 py-3 text-sm disabled:opacity-50 ${slot?.enabled ? "border-indigo-600 bg-indigo-50 text-indigo-700" : "border-slate-200 bg-slate-100 text-slate-500"}`}>
-          {displayTime(time)}<span className="mt-1 block text-xs">{slot?.enabled ? "열림" : "닫힘"}{slot?.booked ? " · 예약 있음" : ""}</span>
+        return <button type="button" key={time} disabled={loading || saving || !!error} aria-label={`${label} ${displayTime(time)}, ${slot?.enabled ? "활성화" : "비활성화"}${slot?.booked ? ", 예약 있음" : ""}`} aria-pressed={slot?.enabled ?? false} onClick={() => void toggle(time)} className={`min-h-11 rounded-xl border px-1 py-3 text-sm transition disabled:opacity-50 ${slot?.enabled ? "border-indigo-600 bg-indigo-600 font-semibold text-white" : "border-slate-200 bg-slate-100 text-slate-400 hover:border-indigo-300"}`}>
+          {displayTime(time)}{slot?.booked && <span className="mt-1 block text-[10px]">예약 있음</span>}
         </button>;
       })}</div>
     </div>)}
