@@ -1,7 +1,8 @@
 "use server";
 
 import { createClient } from "../../../../lib/supabase/server";
-import { DEMO_DATES, DEMO_TIMES } from "@/features/booking/demo-data";
+import { DEMO_DATES } from "@/features/booking/demo-data";
+import { ALL_TIMES } from "@/features/booking/time-slots";
 
 export type CreateInterviewInput = {
   name: string;
@@ -34,7 +35,7 @@ export async function createInterview(
     return { success: false, message: "예약 가능한 날짜를 선택해 주세요." };
   }
 
-  if (!DEMO_TIMES.includes(input.interviewTime)) {
+  if (!ALL_TIMES.includes(input.interviewTime)) {
     return { success: false, message: "예약 가능한 시간을 선택해 주세요." };
   }
 
@@ -54,6 +55,7 @@ export async function createInterview(
         message: error.message,
       });
 
+      if (error.code === "P0001") return { success: false, message: "선택한 시간이 마감되었습니다. 다른 시간을 선택해 주세요." };
       if (error.code === "23505") {
         return {
           success: false,

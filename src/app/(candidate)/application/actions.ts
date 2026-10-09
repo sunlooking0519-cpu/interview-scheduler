@@ -2,7 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "../../../../lib/supabase/server";
-import { DEMO_DATES, DEMO_TIMES } from "@/features/booking/demo-data";
+import { DEMO_DATES } from "@/features/booking/demo-data";
+import { ALL_TIMES } from "@/features/booking/time-slots";
 
 export type CandidateIdentity = { name: string; phone: string };
 export type CandidateReservation = { id: string | number; interview_date: string; interview_time: string; status: "confirmed" | "cancelled" };
@@ -32,7 +33,7 @@ export async function updateCandidateReservation(input: CandidateIdentity, id: s
   if (!/^[1-9][0-9]{0,18}$/.test(reservationId) || BigInt(reservationId) > BigInt("9223372036854775807")) {
     return { error: "예약 ID를 확인할 수 없습니다. 예약 내역을 다시 조회해 주세요." };
   }
-  if (!candidate || !DEMO_DATES.includes(date) || !DEMO_TIMES.includes(time)) {
+  if (!candidate || !DEMO_DATES.includes(date) || !ALL_TIMES.includes(time)) {
     return { error: "입력한 정보와 면접 일정을 확인해 주세요." };
   }
   try {
@@ -41,6 +42,7 @@ export async function updateCandidateReservation(input: CandidateIdentity, id: s
       p_name: candidate.name, p_phone: candidate.phone, p_id: reservationId, p_date: date, p_time: time,
     });
     if (error?.code === "23505") return { error: "이미 예약된 시간입니다. 다른 시간을 선택해 주세요." };
+    if (error?.code === "P0001") return { error: "선택한 시간이 마감되었습니다. 다른 시간을 선택해 주세요." };
     if (error || data !== true) return { error: "수정할 예약을 찾을 수 없거나 수정할 수 없는 상태입니다." };
     revalidatePath("/admin");
     return { error: "" };

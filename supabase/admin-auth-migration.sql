@@ -6,6 +6,7 @@ drop function if exists public.verify_admin_credentials(text, text);
 drop function if exists scheduler.verify_admin_credentials(text, text);
 
 grant usage on schema scheduler to anon, authenticated;
+grant usage on all sequences in schema scheduler to anon, authenticated;
 alter table scheduler.interviews enable row level security;
 revoke all on table scheduler.interviews from anon, authenticated;
 grant insert (name, email, phone, interview_date, interview_time, status)

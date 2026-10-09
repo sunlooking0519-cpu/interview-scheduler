@@ -21,8 +21,62 @@ function load(path, imports) {
 }
 
 const { isAdmin } = load("lib/supabase/admin-role.ts", {});
+const timeSlots = load("src/features/booking/time-slots.ts", {});
 const admin = { id: "admin-id", email: "admin@example.com", app_metadata: { role: "admin" } };
 const redirect = (path) => { throw new Error(`REDIRECT:${path}`); };
+
+test("fixed time grid spans 09:00 to 21:00 and displays AM/PM labels", () => {
+  assert.equal(timeSlots.ALL_TIMES.length, 25);
+  assert.equal(timeSlots.ALL_TIMES[0], "09:00");
+  assert.equal(timeSlots.ALL_TIMES.at(-1), "21:00");
+  assert.equal(timeSlots.displayTime("12:30"), "12:30");
+  assert.equal(timeSlots.displayTime("18:30"), "6:30");
+});
+
+test("admin time controls authorize before saving and reject unsupported slots", async () => {
+  let authorized = 0;
+  const saved = [];
+  const { setTimeSlot } = load("src/app/admin/time-actions.ts", {
+    "@/server/admin-auth": { requireAdmin: async () => {
+      authorized++;
+      return { supabase: { schema(name) {
+        assert.equal(name, "scheduler");
+        return { from(table) {
+          assert.equal(table, "interview_time_slots");
+          return { upsert: async (row) => { saved.push(row); return { error: null }; } };
+        } };
+      } } };
+    } },
+    "@/features/booking/demo-data": { DEMO_DATES: ["2026-10-12"] },
+    "@/features/booking/time-slots": timeSlots,
+    "next/cache": { revalidatePath() {} },
+  });
+  assert.equal((await setTimeSlot("2026-10-12", "18:30", true)).error, "");
+  assert.equal(saved[0].interview_time, "18:30");
+  assert.equal(saved[0].enabled, true);
+  assert.ok((await setTimeSlot("2026-10-12", "21:30", true)).error);
+  assert.equal(authorized, 2);
+  assert.equal(saved.length, 1);
+});
+
+test("availability requests use date-scoped RPC and fail closed", async () => {
+  let queried = false;
+  const { getTimeSlots } = load("src/app/(candidate)/booking/availability.ts", {
+    "../../../../lib/supabase/server": { createClient: async () => ({ schema() {
+      return { rpc: async (fn, args) => {
+        assert.equal(fn, "get_interview_time_slots");
+        assert.equal(args.p_date, "2026-10-12");
+        queried = true;
+        return { data: null, error: { code: "missing migration" } };
+      } };
+    } }) },
+    "@/features/booking/demo-data": { DEMO_DATES: ["2026-10-12"] },
+  });
+  const result = await getTimeSlots("2026-10-12");
+  assert.equal(queried, true);
+  assert.equal(result.slots.length, 0);
+  assert.ok(result.error);
+});
 
 test("candidate review scopes RPC requests and rejects invalid updates", async () => {
   const calls = [];
@@ -36,6 +90,7 @@ test("candidate review scopes RPC requests and rejects invalid updates", async (
       } };
     } }) },
     "@/features/booking/demo-data": { DEMO_DATES: ["2026-10-12"], DEMO_TIMES: ["10:00"] },
+    "@/features/booking/time-slots": timeSlots,
   });
   const candidate = { name: " 홍길동 ", phone: "010-1234-5678" };
   assert.equal((await actions.findCandidateReservations(candidate)).error, "");
@@ -63,6 +118,7 @@ test("candidate booking accepts only name and phone and omits email in insert", 
       },
     }) },
     "@/features/booking/demo-data": { DEMO_DATES: ["2026-10-12"], DEMO_TIMES: ["10:00"] },
+    "@/features/booking/time-slots": timeSlots,
   });
   const input = { name: " 홍길동 ", phone: " 010-1234-5678 ", interviewDate: "2026-10-12", interviewTime: "10:00" };
   assert.equal((await createInterview(input)).success, true);

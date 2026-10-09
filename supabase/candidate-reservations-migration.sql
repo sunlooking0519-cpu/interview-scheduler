@@ -26,7 +26,7 @@ begin
   if char_length(trim(p_name)) not between 1 and 60
     or p_phone !~ '^[0-9+() -]{8,20}$'
     or p_date not in ('2026-10-12'::date, '2026-10-13'::date, '2026-10-14'::date, '2026-10-15'::date, '2026-10-16'::date)
-    or p_time not in ('10:00', '10:30', '11:00', '11:30', '14:00', '14:30', '15:00', '15:30', '16:00', '16:30')
+    or p_time !~ '^((09|1[0-9]|20):(00|30)|21:00)$'
     or p_name is null or p_phone is null or p_date is null or p_time is null then
     return false;
   end if;

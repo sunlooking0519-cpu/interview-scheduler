@@ -4,7 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { createInterview } from "@/app/(candidate)/booking/actions";
-import { DEMO_DATES, DEMO_TIMES } from "@/features/booking/demo-data";
+import { DEMO_DATES } from "@/features/booking/demo-data";
+import { AvailableTimeButtons } from "@/features/booking/components/available-time-buttons";
 import { formatInterviewDate } from "@/lib/date";
 
 type Candidate = { name: string; phone: string };
@@ -65,7 +66,7 @@ export function BookingPicker() {
         <fieldset className="mt-8" disabled={!date || isSubmitting}>
           <legend className="font-semibold">면접 시간 <span className="text-xs font-normal text-slate-500">· 30분</span></legend>
           <p className="mt-2 text-sm text-slate-500">{date ? formatInterviewDate(date) : "먼저 예약 가능한 날짜를 선택해 주세요."}</p>
-          <div className="mt-4 grid grid-cols-3 gap-3 sm:grid-cols-5">{DEMO_TIMES.map(value => <button key={value} aria-pressed={time === value} onClick={() => { setTime(value); setErrorMessage(""); }} className={`rounded-xl border py-3 text-sm disabled:opacity-40 ${time === value ? "border-indigo-600 bg-indigo-50 text-indigo-700" : "border-slate-200"}`}>{value}</button>)}</div>
+          <AvailableTimeButtons date={date} selected={time} disabled={isSubmitting} onSelect={(value) => { setTime(value); setErrorMessage(""); }} />
         </fieldset>
       </section>
       <aside className="self-start rounded-2xl border border-slate-200 bg-white p-7">

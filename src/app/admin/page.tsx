@@ -1,4 +1,5 @@
 import { logoutAdmin } from "@/app/admin/actions";
+import { TimeSlotManager } from "@/features/admin/components/time-slot-manager";
 import { BookingTable } from "@/features/admin/components/booking-table";
 import { requireAdmin } from "@/server/admin-auth";
 import { getInterviewReservations, type InterviewReservation } from "@/server/interviews";
@@ -41,6 +42,7 @@ export default async function AdminPage() {
       <div className="my-8 grid gap-4 sm:grid-cols-3">
         {stats.map(([label, count]) => <section key={label} className="rounded-2xl border border-slate-200 bg-white p-6"><h2 className="text-sm text-slate-500">{label}</h2><p className="mt-3 text-3xl font-bold">{count}<span className="ml-2 text-sm font-normal text-slate-400">건</span></p></section>)}
       </div>
+      <TimeSlotManager />
       <BookingTable interviews={interviews} />
     </>
   );

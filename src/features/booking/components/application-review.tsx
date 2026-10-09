@@ -4,7 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { findCandidateReservations, updateCandidateReservation, type CandidateIdentity, type CandidateReservation } from "@/app/(candidate)/application/actions";
-import { DEMO_DATES, DEMO_TIMES } from "@/features/booking/demo-data";
+import { DEMO_DATES } from "@/features/booking/demo-data";
+import { AvailableTimeButtons } from "@/features/booking/components/available-time-buttons";
 import { formatInterviewDate } from "@/lib/date";
 
 export function ApplicationReview() {
@@ -14,6 +15,7 @@ export function ApplicationReview() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const busy = useRef(false);
+  const [originals, setOriginals] = useState<Record<string, { date: string; time: string }>>({});
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
 
@@ -31,6 +33,7 @@ export function ApplicationReview() {
       const result = await findCandidateReservations(saved);
       if (!active) return;
       setCandidate(saved);
+      setOriginals(Object.fromEntries(result.data.map((row) => [String(row.id), { date: row.interview_date, time: row.interview_time }])));
       setReservations(result.data);
       setError(result.error);
       setLoading(false);
@@ -49,6 +52,7 @@ export function ApplicationReview() {
       const result = await updateCandidateReservation(candidate, row.id, row.interview_date, row.interview_time);
       if (result.error) { setError(result.error); return; }
       const refreshed = await findCandidateReservations(candidate);
+      setOriginals(Object.fromEntries(refreshed.data.map((value) => [String(value.id), { date: value.interview_date, time: value.interview_time }])));
       setReservations(refreshed.data);
       setError(refreshed.error);
       setMessage("면접 일정이 수정되었습니다.");
@@ -92,9 +96,7 @@ export function ApplicationReview() {
         <div>
           <h3 className="text-sm font-semibold">면접 시간 · 30분</h3>
           <p className="mt-2 text-sm text-slate-500">선택한 일정: {formatInterviewDate(row.interview_date)} · {row.interview_time} (KST)</p>
-          <div className="mt-4 grid grid-cols-3 gap-3 sm:grid-cols-5">
-            {DEMO_TIMES.map((time) => <button key={time} type="button" aria-label={`면접 시간 ${time}`} aria-pressed={row.interview_time === time} onClick={() => change(row.id, "interview_time", time)} className={`rounded-xl border py-3 text-sm focus-visible:outline-2 focus-visible:outline-indigo-600 ${row.interview_time === time ? "border-indigo-600 bg-indigo-50 font-semibold text-indigo-700" : "border-slate-200 hover:bg-slate-50"}`}>{time}</button>)}
-          </div>
+          <AvailableTimeButtons key={`${row.id}-${originals[String(row.id)]?.date}-${originals[String(row.id)]?.time}`} date={row.interview_date} selected={row.interview_time} originalDate={row.status === "confirmed" ? originals[String(row.id)]?.date : undefined} originalTime={originals[String(row.id)]?.time} disabled={saving || row.status !== "confirmed"} onSelect={(time) => change(row.id, "interview_time", time)} />
         </div>
       </fieldset>
       {row.status === "confirmed" && <button disabled={saving} className="rounded-xl bg-indigo-600 px-5 py-3 text-sm font-semibold text-white disabled:bg-slate-300">{saving ? "저장 중..." : "변경 저장"}</button>}
