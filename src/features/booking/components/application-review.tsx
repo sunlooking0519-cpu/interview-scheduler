@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { findCandidateReservations, updateCandidateReservation, type CandidateIdentity, type CandidateReservation } from "@/app/(candidate)/application/actions";
 import { DEMO_DATES, DEMO_TIMES } from "@/features/booking/demo-data";
+import { formatInterviewDate } from "@/lib/date";
 
 export function ApplicationReview() {
   const router = useRouter();
@@ -69,18 +70,32 @@ export function ApplicationReview() {
     {loading && <p role="status">예약 내역을 불러오는 중...</p>}
     {error && <p role="alert" className="rounded-xl bg-red-50 p-4 text-sm text-red-700">{error}</p>}
     {message && <p role="status" className="rounded-xl bg-emerald-50 p-4 text-sm text-emerald-700">{message}</p>}
-    {!loading && !error && reservations.length === 0 && <p className="text-slate-500">해당 이름과 전화번호로 등록된 예약이 없습니다. 입력 정보를 확인하거나 새 면접을 예약해 주세요.</p>}
+    {!loading && !error && reservations.length === 0 && <div className="space-y-2 rounded-xl bg-slate-50 p-4 text-sm text-slate-600">
+      <p>입력한 이름과 전화번호가 모두 일치하는 예약을 찾지 못했습니다.</p>
+      <p>예약할 때 입력한 이름을 정확히 확인해 주세요. 전화번호가 같아도 이름이 다르면 조회되지 않습니다.</p>
+      <Link href="/login" className="inline-block font-semibold text-indigo-600 hover:underline">이름·전화번호 다시 입력하기</Link>
+    </div>}
     {reservations.map((row) => <form key={row.id} className="space-y-4 rounded-2xl border border-slate-200 p-5" onSubmit={(event) => { event.preventDefault(); void save(row); }}>
       <p className="font-semibold">면접 예약 · {row.status === "confirmed" ? "확정" : "취소"}</p>
-      <fieldset disabled={saving || row.status !== "confirmed"} className="grid gap-4 sm:grid-cols-2">
-        <label className="text-sm">면접 날짜<select aria-label="면접 날짜" value={row.interview_date} onChange={(event) => change(row.id, "interview_date", event.target.value)} className="mt-2 block w-full rounded-lg border p-3">
-          {!DEMO_DATES.includes(row.interview_date) && <option value={row.interview_date}>{row.interview_date}</option>}
-          {DEMO_DATES.map((date) => <option key={date}>{date}</option>)}
-        </select></label>
-        <label className="text-sm">면접 시간<select aria-label="면접 시간" value={row.interview_time} onChange={(event) => change(row.id, "interview_time", event.target.value)} className="mt-2 block w-full rounded-lg border p-3">
-          {!DEMO_TIMES.includes(row.interview_time) && <option value={row.interview_time}>{row.interview_time}</option>}
-          {DEMO_TIMES.map((time) => <option key={time}>{time}</option>)}
-        </select></label>
+      <fieldset disabled={saving || row.status !== "confirmed"} className="space-y-6">
+        <legend className="mb-3 text-sm font-semibold">면접 날짜 · 2026년 10월</legend>
+        <div className="grid grid-cols-7 gap-2 text-center">
+          {["일", "월", "화", "수", "목", "금", "토"].map((day) => <span key={day} className="py-2 text-xs text-slate-500">{day}</span>)}
+          {Array.from({ length: 4 }, (_, i) => <span key={`blank-${i}`} />)}
+          {Array.from({ length: 31 }, (_, i) => {
+            const date = `2026-10-${String(i + 1).padStart(2, "0")}`;
+            const selected = row.interview_date === date;
+            const available = DEMO_DATES.includes(date);
+            return <button type="button" key={date} disabled={!available} aria-label={formatInterviewDate(date)} aria-pressed={selected} onClick={() => change(row.id, "interview_date", date)} className={`rounded-xl py-3 text-sm focus-visible:outline-2 focus-visible:outline-indigo-600 ${selected ? "bg-indigo-600 font-bold text-white" : available ? "bg-indigo-50 font-semibold text-indigo-700 hover:bg-indigo-100" : "text-slate-300"}`}>{i + 1}</button>;
+          })}
+        </div>
+        <div>
+          <h3 className="text-sm font-semibold">면접 시간 · 30분</h3>
+          <p className="mt-2 text-sm text-slate-500">선택한 일정: {formatInterviewDate(row.interview_date)} · {row.interview_time} (KST)</p>
+          <div className="mt-4 grid grid-cols-3 gap-3 sm:grid-cols-5">
+            {DEMO_TIMES.map((time) => <button key={time} type="button" aria-label={`면접 시간 ${time}`} aria-pressed={row.interview_time === time} onClick={() => change(row.id, "interview_time", time)} className={`rounded-xl border py-3 text-sm focus-visible:outline-2 focus-visible:outline-indigo-600 ${row.interview_time === time ? "border-indigo-600 bg-indigo-50 font-semibold text-indigo-700" : "border-slate-200 hover:bg-slate-50"}`}>{time}</button>)}
+          </div>
+        </div>
       </fieldset>
       {row.status === "confirmed" && <button disabled={saving} className="rounded-xl bg-indigo-600 px-5 py-3 text-sm font-semibold text-white disabled:bg-slate-300">{saving ? "저장 중..." : "변경 저장"}</button>}
     </form>)}
