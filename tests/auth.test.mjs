@@ -41,9 +41,9 @@ test("candidate review scopes RPC requests and rejects invalid updates", async (
   assert.equal((await actions.findCandidateReservations(candidate)).error, "");
   assert.equal(calls[0].args.p_name, "홍길동");
   assert.equal(calls[0].args.p_phone, candidate.phone);
-  const id = "12345678-1234-1234-1234-123456789012";
+  const id = 2;
   assert.equal((await actions.updateCandidateReservation(candidate, id, "2026-10-12", "10:00")).error, "");
-  assert.equal(calls[1].args.p_id, id);
+  assert.equal(calls[1].args.p_id, "2");
   assert.equal(calls[1].args.p_phone, candidate.phone);
   assert.ok((await actions.updateCandidateReservation(candidate, id, "2026-10-13", "10:00")).error);
   assert.ok((await actions.findCandidateReservations({ name: "", phone: "" })).error);

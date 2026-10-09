@@ -60,7 +60,7 @@ export function ApplicationReview() {
     }
   }
 
-  function change(id: string, field: "interview_date" | "interview_time", value: string) {
+  function change(id: string | number, field: "interview_date" | "interview_time", value: string) {
     setReservations((rows) => rows.map((row) => row.id === id ? { ...row, [field]: value } : row));
     setMessage("");
   }

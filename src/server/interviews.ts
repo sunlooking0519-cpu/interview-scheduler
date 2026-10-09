@@ -3,7 +3,7 @@ import "server-only";
 import { requireAdmin } from "@/server/admin-auth";
 
 export type InterviewReservation = {
-  id: string;
+  id: string | number;
   name: string;
   email: string | null;
   phone: string;
