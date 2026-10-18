@@ -7,6 +7,7 @@ import { saveBusinessCard } from "@/app/admin/sales/actions";
 import { guessSalesCardFields, type SalesCardFields } from "@/features/admin/sales-card-ocr";
 import { recognizeBusinessCard, recognizeBusinessCardField, type CardField } from "@/features/admin/recognize-business-card";
 import { BusinessCardCropper } from "@/features/admin/components/business-card-cropper";
+import { BusinessCardFilePicker } from "@/features/admin/components/business-card-file-picker";
 
 const types: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" };
 const names: Record<string, string> = { name: "이름", organization: "기관·회사", title: "직책", phone: "전화", email: "이메일" };
@@ -25,14 +26,16 @@ export function BusinessCardUploader({ organizationId }: { organizationId: strin
     if (next && (!types[next.type] || next.size === 0 || next.size > 10 * 1024 * 1024)) {
       setFile(null);
       setCroppedFile(null);
-      setStatus("JPG, PNG, WebP 파일을 10MB 이하로 선택해 주세요.");
+      setStatus(/\.(?:heic|heif)$/i.test(next.name) || /hei[cf]/i.test(next.type)
+        ? "고효율 사진(HEIC)은 인식할 수 없습니다. 카메라 설정에서 고효율 사진을 끄거나 JPG 사진을 선택해 주세요."
+        : "JPG, PNG, WebP 파일을 10MB 이하로 선택해 주세요.");
       return;
     }
     setFile(next);
     setCroppedFile(null);
     setOcrText("");
     setFields(emptyFields);
-    setStatus(next ? "명함 영역을 지정한 뒤 글자 인식을 눌러 주세요." : "");
+    setStatus(next ? "사진이 선택됐습니다. 아래에서 사진을 확인하고 '이 사진 글자 인식'을 눌러 주세요." : "");
   }
 
   async function recognize(cropped: File) {
@@ -102,10 +105,11 @@ export function BusinessCardUploader({ organizationId }: { organizationId: strin
   }
 
   return <div className="mt-4 rounded-xl bg-slate-50 p-3">
-    <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" aria-label="명함 사진 선택" disabled={busy} onChange={(event) => selectCard(event.target.files?.[0] ?? null)} className="w-full text-sm" />
+    <h3 className="mb-2 font-semibold">명함 사진 준비</h3>
+    <BusinessCardFilePicker busy={busy} file={file} onSelect={selectCard} />
     <p className="mt-2 text-xs text-slate-600">JPG·PNG·WebP, 최대 10MB. 글자 인식은 기기에서 처리합니다. 저장하면 명함은 관리자 전용 비공개 저장소에 보관됩니다.</p>
+    <p role="status" className="mt-2 text-sm text-slate-700">{status}</p>
     {file && <BusinessCardCropper key={`${file.name}:${file.size}:${file.lastModified}`} file={file} busy={busy} canRefine={Boolean(croppedFile)} onCrop={(cropped, field) => field ? recognizeField(cropped, field) : recognize(cropped)} />}
-    <p role="status" className="mt-2 text-sm text-slate-600">{status}</p>
     {file && <div className="mt-3 space-y-3">
       <label className="block text-sm">인식된 전체 텍스트<textarea value={ocrText} onChange={(event) => setOcrText(event.target.value)} rows={5} maxLength={20000} className="mt-1 w-full rounded-xl border border-slate-300 p-3" /></label>
       <div className="grid gap-2 sm:grid-cols-2">{Object.entries(names).map(([key, name]) => <label key={key} className="text-sm">{name}<input value={fields[key as keyof SalesCardFields]} onChange={(event) => setFields({ ...fields, [key]: event.target.value })} maxLength={500} className="mt-1 w-full rounded-xl border border-slate-300 p-3" /></label>)}</div>
