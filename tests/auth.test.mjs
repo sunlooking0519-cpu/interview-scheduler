@@ -12,7 +12,7 @@ function load(path, imports) {
   }).outputText;
   const exports = {};
   vm.runInNewContext(code, {
-    exports, FormData, console, process, Buffer, URL, URLSearchParams,
+    exports, FormData, console, process, Buffer, URL, URLSearchParams, AbortSignal,
     require(name) {
       if (name === "@/server/calendar-sync" && !(name in imports)) return { scheduleCalendarSync() {} };
       if (name === "@/server/resumes" && !(name in imports)) return {};
@@ -51,6 +51,63 @@ test("business card OCR suggests an organization type and extracts contact detai
   assert.equal(card.classifySalesCard(fields.organization), "school");
   assert.equal(card.classifySalesCard("미래연구소"), "institution");
   assert.equal(card.classifySalesCard("가나다상사"), "other");
+});
+
+test("Google Vision OCR sends a Korean document request with a server-only key", async () => {
+  const previous = process.env.GOOGLE_VISION_API_KEY;
+  process.env.GOOGLE_VISION_API_KEY = "test-vision-key";
+  try {
+    const vision = load("src/server/business-card-vision.ts", { "server-only": {} });
+    const image = Buffer.from("ffd8ff1234", "hex");
+    assert.equal(vision.isSupportedCardImage(image), true);
+    assert.equal(vision.isSupportedCardImage(Buffer.from("not an image")), false);
+    const text = await vision.recognizeBusinessCardWithVision(image, async (url, init) => {
+      assert.equal(url, "https://vision.googleapis.com/v1/images:annotate");
+      assert.equal(init.headers["x-goog-api-key"], "test-vision-key");
+      const body = JSON.parse(init.body);
+      assert.equal(body.requests[0].features[0].type, "DOCUMENT_TEXT_DETECTION");
+      assert.equal(body.requests[0].image.content, image.toString("base64"));
+      return { ok: true, json: async () => ({ responses: [{ fullTextAnnotation: { text: "한빛대학교\n김민수" } }] }) };
+    });
+    assert.equal(text, "한빛대학교\n김민수");
+  } finally { if (previous === undefined) delete process.env.GOOGLE_VISION_API_KEY; else process.env.GOOGLE_VISION_API_KEY = previous; }
+});
+
+test("business card OCR endpoint requires an admin and removes its temporary image", async () => {
+  const previous = process.env.GOOGLE_VISION_API_KEY;
+  process.env.GOOGLE_VISION_API_KEY = "test-vision-key";
+  const path = "ocr-temp/11111111-1111-1111-1111-111111111111.jpg";
+  const removed = [];
+  let currentUser = null;
+  const supabase = {
+    auth: { getUser: async () => ({ data: { user: currentUser }, error: null }) },
+    storage: { from(bucket) {
+      assert.equal(bucket, "sales-cards");
+      return {
+        download: async (requested) => { assert.equal(requested, path); return { data: new Blob([Buffer.from("ffd8ff1234", "hex")]), error: null }; },
+        remove: async (paths) => { removed.push(...paths); return { error: null }; },
+      };
+    } },
+  };
+  try {
+    const route = load("src/app/api/admin/sales/ocr/route.ts", {
+      "next/server": { NextResponse },
+      "../../../../../../lib/supabase/server": { createClient: async () => supabase },
+      "../../../../../../lib/supabase/admin-role": { isAdmin: (user) => user.app_metadata?.role === "admin" },
+      "@/server/business-card-vision": {
+        CARD_MAX_BYTES: 10 * 1024 * 1024,
+        isSupportedCardImage: () => true,
+        recognizeBusinessCardWithVision: async () => "한빛대학교",
+      },
+    });
+    const call = () => route.POST(new NextRequest("https://example.com/api/admin/sales/ocr", { method: "POST", body: JSON.stringify({ path }), headers: { "content-type": "application/json" } }));
+    assert.equal((await call()).status, 401);
+    currentUser = admin;
+    const response = await call();
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).text, "한빛대학교");
+    assert.deepEqual(removed, [path]);
+  } finally { if (previous === undefined) delete process.env.GOOGLE_VISION_API_KEY; else process.env.GOOGLE_VISION_API_KEY = previous; }
 });
 
 test("new sales lead links the organization, contact and private business card", async () => {

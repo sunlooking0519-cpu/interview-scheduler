@@ -100,6 +100,8 @@ Google 캘린더 조회·예약 자동 동기화 설정은 [설정 안내](docs/
 
 영업관리 기능을 배포하기 전에 [영업관리 설정 안내](docs/sales-management-setup.md)에 따라 SQL을 실행하세요. `/admin/sales`에서 기관·담당자·미팅·제안서 버전·명함 OCR을 관리하고, 연결된 Google 캘린더에 영업 미팅을 동기화합니다.
 
+명함 Google Vision OCR 시험 설정은 [Google Vision 설정 안내](docs/google-vision-setup.md)를 참고하세요. 별도 SQL은 필요하지 않으며, 키 설정 전에는 기존 브라우저 OCR을 사용합니다.
+
 ```sh
 pnpm test
 pnpm typecheck

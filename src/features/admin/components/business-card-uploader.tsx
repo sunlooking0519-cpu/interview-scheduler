@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "../../../../lib/supabase/client";
 import { saveBusinessCard } from "@/app/admin/sales/actions";
 import { guessSalesCardFields, type SalesCardFields } from "@/features/admin/sales-card-ocr";
+import { recognizeBusinessCard } from "@/features/admin/recognize-business-card";
 
 const types: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" };
 const names: Record<string, string> = { name: "이름", organization: "기관·회사", title: "직책", phone: "전화", email: "이메일" };
@@ -20,18 +21,14 @@ export function BusinessCardUploader({ organizationId }: { organizationId: strin
   async function recognize() {
     if (!file || busy) return;
     setBusy(true);
-    setStatus("한국어·영어 글자를 인식 중입니다. 처음 실행할 때 언어 파일을 다운로드합니다.");
-    let worker: Awaited<ReturnType<typeof import("tesseract.js")["createWorker"]>> | undefined;
+    setStatus("명함을 인식 중입니다. Google Vision에 연결합니다.");
     try {
-      const { createWorker } = await import("tesseract.js");
-      worker = await createWorker("kor+eng");
-      const result = await worker.recognize(file);
-      const text = result.data.text.trim();
-      setOcrText(text);
-      setFields(guessSalesCardFields(text));
-      setStatus("인식 완료. 잘못 읽힌 내용을 수정한 후 저장해 주세요.");
-    } catch { setStatus("글자 인식에 실패했습니다. 네트워크를 확인하거나 직접 입력해 주세요."); }
-    finally { await worker?.terminate(); setBusy(false); }
+      const result = await recognizeBusinessCard(file);
+      setOcrText(result.text);
+      setFields(guessSalesCardFields(result.text));
+      setStatus(result.note);
+    } catch (error) { setStatus(error instanceof Error ? error.message : "글자 인식에 실패했습니다. 네트워크를 확인하거나 직접 입력해 주세요."); }
+    finally { setBusy(false); }
   }
 
   async function save() {

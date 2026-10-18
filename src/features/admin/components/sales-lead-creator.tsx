@@ -6,6 +6,7 @@ import Image from "next/image";
 import { createClient } from "../../../../lib/supabase/client";
 import { createSalesLead } from "@/app/admin/sales/actions";
 import { classifySalesCard, guessSalesCardFields, type SalesCardFields, type SalesKind } from "@/features/admin/sales-card-ocr";
+import { recognizeBusinessCard } from "@/features/admin/recognize-business-card";
 
 const extensions: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" };
 const emptyFields: SalesCardFields = { name: "", organization: "", title: "", phone: "", email: "" };
@@ -36,21 +37,17 @@ export function SalesLeadCreator() {
     setOcrText("");
     if (!next) { setMessage(""); return; }
     setBusy(true);
-    setMessage("명함의 한글·영문을 읽는 중입니다. 첫 실행 시 언어 파일을 내려받습니다.");
-    let worker: Awaited<ReturnType<typeof import("tesseract.js")["createWorker"]>> | undefined;
+    setMessage("명함을 인식 중입니다. Google Vision에 연결합니다.");
     try {
-      const { createWorker } = await import("tesseract.js");
-      worker = await createWorker("kor+eng");
-      const recognized = (await worker.recognize(next)).data.text.trim();
-      const result = guessSalesCardFields(recognized);
-      setOcrText(recognized);
+      const recognized = await recognizeBusinessCard(next);
+      const result = guessSalesCardFields(recognized.text);
+      setOcrText(recognized.text);
       setFields(result);
       setKind(classifySalesCard(result.organization));
-      setMessage("자동 분류와 글자 인식을 마쳤습니다. 내용을 확인하고 수정해 주세요.");
-    } catch {
-      setMessage("글자 인식에 실패했습니다. 직접 입력한 뒤 저장할 수 있습니다.");
+      setMessage(recognized.note);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "글자 인식에 실패했습니다. 직접 입력한 뒤 저장할 수 있습니다.");
     } finally {
-      await worker?.terminate();
       setBusy(false);
     }
   }
@@ -97,7 +94,7 @@ export function SalesLeadCreator() {
       <div className="rounded-xl border border-dashed border-indigo-300 bg-indigo-50/50 p-4">
         <label htmlFor="sales-card-photo" className="block font-semibold text-indigo-950">명함 촬영·사진 선택</label>
         <input id="sales-card-photo" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" disabled={busy} onChange={(event) => void selectCard(event.target.files?.[0] ?? null)} className="mt-2 block w-full text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-indigo-600 file:px-3 file:py-2 file:font-semibold file:text-white" />
-        <p className="mt-2 text-xs text-slate-600">JPG·PNG·WebP, 최대 10MB. 명함은 관리자만 볼 수 있는 비공개 저장소에 보관됩니다.</p>
+        <p className="mt-2 text-xs text-slate-600">명함이 사진 대부분을 차지하도록 가까이 촬영해 주세요. JPG·PNG·WebP, 최대 10MB. 인식 시 사진은 Google Vision으로 전송되며, 등록한 명함은 관리자 전용 비공개 저장소에 보관됩니다.</p>
         {previewUrl && <div className="relative mt-3 h-52 w-full"><Image src={previewUrl} alt="선택한 명함 미리보기" fill unoptimized className="rounded-lg border border-slate-200 object-contain" /></div>}
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
