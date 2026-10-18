@@ -10,7 +10,7 @@ import { BusinessCardCropper } from "@/features/admin/components/business-card-c
 import { BusinessCardFilePicker } from "@/features/admin/components/business-card-file-picker";
 
 const extensions: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" };
-const emptyFields: SalesCardFields = { name: "", organization: "", title: "", phone: "", email: "" };
+const emptyFields: SalesCardFields = { name: "", organization: "", title: "", phone: "", mobile: "", email: "" };
 const inputClass = "mt-1 w-full min-w-0 rounded-xl border border-slate-300 bg-white p-3 text-base";
 
 export function SalesLeadCreator() {
@@ -89,7 +89,7 @@ export function SalesLeadCreator() {
     event.preventDefault();
     if (busy) return;
     if (!fields.organization.trim()) { setMessage("기관·학교·업체명을 입력해 주세요."); return; }
-    if ((fields.title.trim() || fields.phone.trim() || fields.email.trim()) && !fields.name.trim()) {
+    if ((fields.title.trim() || fields.phone.trim() || fields.mobile.trim() || fields.email.trim()) && !fields.name.trim()) {
       setMessage("담당자의 직책·연락처를 저장하려면 이름도 입력해 주세요.");
       return;
     }
@@ -108,7 +108,7 @@ export function SalesLeadCreator() {
       }
       const result = await createSalesLead({
         organizationId, name: fields.organization, kind,
-        contact: { name: fields.name, title: fields.title, phone: fields.phone, email: fields.email },
+        contact: { name: fields.name, title: fields.title, phone: fields.phone, mobile: fields.mobile, email: fields.email },
         imagePath, ocrText,
       });
       if (result.error) throw new Error(result.error);
@@ -137,7 +137,8 @@ export function SalesLeadCreator() {
         <label className="block text-sm font-medium">대상 유형<select value={kind} onChange={(event) => { setKind(event.target.value as SalesKind); setKindTouched(true); }} className={inputClass}><option value="institution">기관</option><option value="school">학교</option><option value="other">기타·업체</option></select></label>
         <label className="block text-sm font-medium">담당자 이름<input maxLength={120} value={fields.name} onChange={(event) => setFields({ ...fields, name: event.target.value })} placeholder="담당자 이름" className={inputClass}/></label>
         <label className="block text-sm font-medium">직책<input maxLength={120} value={fields.title} onChange={(event) => setFields({ ...fields, title: event.target.value })} placeholder="직책" className={inputClass}/></label>
-        <label className="block text-sm font-medium">전화번호<input type="tel" maxLength={80} value={fields.phone} onChange={(event) => setFields({ ...fields, phone: event.target.value })} placeholder="전화번호" className={inputClass}/></label>
+        <label className="block text-sm font-medium">전화번호 (Tel)<input type="tel" maxLength={80} value={fields.phone} onChange={(event) => setFields({ ...fields, phone: event.target.value })} placeholder="회사·기관 전화번호" className={inputClass}/></label>
+        <label className="block text-sm font-medium">휴대폰 (Mobile)<input type="tel" maxLength={80} value={fields.mobile} onChange={(event) => setFields({ ...fields, mobile: event.target.value })} placeholder="담당자 휴대폰" className={inputClass}/></label>
         <label className="block text-sm font-medium sm:col-span-2">이메일<input type="email" maxLength={200} value={fields.email} onChange={(event) => setFields({ ...fields, email: event.target.value })} placeholder="이메일" className={inputClass}/></label>
       </div>
       {file && <label className="block text-sm font-medium">인식된 전체 텍스트<textarea rows={4} maxLength={20000} value={ocrText} onChange={(event) => setOcrText(event.target.value)} className={inputClass}/></label>}

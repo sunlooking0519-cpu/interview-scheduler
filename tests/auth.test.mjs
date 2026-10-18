@@ -47,7 +47,8 @@ test("business card OCR suggests an organization type and extracts contact detai
   const fields = card.guessSalesCardFields("한빛대학교\n김민수\n입학처 팀장\n010-1234-5678\nminsu@example.com");
   assert.equal(fields.organization, "한빛대학교");
   assert.equal(fields.name, "김민수");
-  assert.equal(fields.phone, "010-1234-5678");
+  assert.equal(fields.phone, "");
+  assert.equal(fields.mobile, "010-1234-5678");
   assert.equal(fields.email, "minsu@example.com");
   assert.equal(card.classifySalesCard(fields.organization), "school");
   assert.equal(card.classifySalesCard("미래연구소"), "institution");
@@ -59,14 +60,15 @@ test("business card fields ignore slogans, prefer mobile numbers, and keep uncer
   const fields = card.guessSalesCardFields("63) 소통·연결·창조의 새 강진.\n강진군 4차산업혁명활용추진단\nT. 061 430 5941\nM. 010 2948 7147\nE-mail: poorun@korea.kr", "정 은 지 | 디지털혁신팀장");
   assert.equal(fields.organization, "강진군 4차산업혁명활용추진단");
   assert.equal(fields.name, "정은지");
-  assert.equal(fields.phone, "010 2948 7147");
+  assert.equal(fields.phone, "061 430 5941");
+  assert.equal(fields.mobile, "010 2948 7147");
   assert.equal(fields.title, "팀장");
   assert.equal(card.classifySalesCard(fields.organization), "institution");
 
   const noisy = card.guessSalesCardFields("> TAE JIN croup\nCRIA ERS RAE HAs aor\n010.6690.0998\nktylove0998@hanmail.net");
   assert.equal(noisy.organization, "");
   assert.equal(noisy.name, "");
-  assert.equal(noisy.phone, "010.6690.0998");
+  assert.equal(noisy.mobile, "010.6690.0998");
   assert.equal(noisy.email, "ktylove0998@hanmail.net");
 
   const council = card.guessSalesCardFields("69) 전남광주통합특별시의회 4 TH\n미래산업위원회 위원장 이 귀 순\n010-4484-5255");
@@ -74,6 +76,19 @@ test("business card fields ignore slogans, prefer mobile numbers, and keep uncer
   assert.equal(council.name, "이귀순");
   assert.equal(council.title, "위원장");
   assert.equal(card.classifySalesCard(council.organization), "institution");
+});
+
+test("business card OCR separates Tel and Mobile and never assigns Fax", () => {
+  const card = load("src/features/admin/sales-card-ocr.ts", {});
+  const fields = card.guessSalesCardFields("TAEJIN GROUP\nT. 062 531 6212 F. 062 955 1657 M. 010 6690 0998\nE-mail: contact@example.com");
+  assert.equal(fields.phone, "062 531 6212");
+  assert.equal(fields.mobile, "010 6690 0998");
+  const mobileOnly = card.guessSalesCardFields("H.P 010-4484-5255\nFax 061-430-5949");
+  assert.equal(mobileOnly.phone, "");
+  assert.equal(mobileOnly.mobile, "010-4484-5255");
+  const phoneOnly = card.guessSalesCardFields("Tel: 070-7123-9057\nF. 062-955-1657");
+  assert.equal(phoneOnly.phone, "070-7123-9057");
+  assert.equal(phoneOnly.mobile, "");
 });
 
 test("business card OCR does not mistake organizations, departments or slogans for names", () => {
@@ -237,11 +252,14 @@ test("new sales lead links the organization, contact and private business card",
   });
   const input = {
     organizationId, name: "한빛대학교", kind: "school",
-    contact: { name: "김민수", title: "팀장", phone: "010-1234-5678", email: "minsu@example.com" },
+    contact: { name: "김민수", title: "팀장", phone: "02-123-4567", mobile: "010-1234-5678", email: "minsu@example.com" },
     imagePath: `${organizationId}/11111111-1111-1111-1111-111111111111.jpg`, ocrText: "한빛대학교 김민수",
   };
   assert.equal((await actions.createSalesLead(input)).id, organizationId);
   assert.deepEqual(writes.map(({ table }) => table), ["sales_organizations", "sales_contacts", "sales_business_cards"]);
+  assert.equal(writes[1].row.phone, "02-123-4567");
+  assert.equal(writes[1].row.mobile, "010-1234-5678");
+  assert.equal(writes[2].row.ocr_fields.mobile, "010-1234-5678");
   assert.equal(writes[2].row.contact_id, "contact-id");
   assert.equal(writes[2].row.image_path, input.imagePath);
 });

@@ -23,14 +23,14 @@ export async function createSalesLead(input: {
   const { user, supabase } = await requireAdmin();
   const organizationId = input.organizationId;
   const name = input.name.trim();
-  const contactInput = input.contact ?? { name: "", title: "", phone: "", email: "" };
+  const contactInput = input.contact ?? { name: "", title: "", phone: "", mobile: "", email: "" };
   const contact = Object.fromEntries(
-    (["name", "title", "phone", "email"] as const).map((key) => [key, String(contactInput[key] ?? "").trim()]),
+    (["name", "title", "phone", "mobile", "email"] as const).map((key) => [key, String(contactInput[key] ?? "").trim()]),
   ) as Omit<SalesCardFields, "organization">;
   const validPath = !input.imagePath || new RegExp(`^${organizationId}/[0-9a-f-]{36}\\.(jpg|png|webp)$`, "i").test(input.imagePath);
   if (!uuidPattern.test(organizationId) || !name || name.length > 200 || !["institution", "school", "other"].includes(input.kind)
-    || contact.name.length > 120 || contact.title.length > 120 || contact.phone.length > 80 || contact.email.length > 200
-    || ((contact.title || contact.phone || contact.email) && !contact.name) || !validPath || input.ocrText.length > 20000) {
+    || contact.name.length > 120 || contact.title.length > 120 || contact.phone.length > 80 || contact.mobile.length > 80 || contact.email.length > 200
+    || ((contact.title || contact.phone || contact.mobile || contact.email) && !contact.name) || !validPath || input.ocrText.length > 20000) {
     return { id: "", error: "기관명, 담당자 정보와 명함 파일을 확인해 주세요." };
   }
   const db = supabase.schema("scheduler");
@@ -91,7 +91,7 @@ export async function createContact(data: FormData) {
   const organization_id = validId(field(data, "organization_id"));
   const name = field(data, "name", 120);
   if (!name) throw new Error("담당자 이름을 입력해 주세요.");
-  const { error } = await supabase.schema("scheduler").from("sales_contacts").insert({ organization_id, name, title: field(data, "title", 120), phone: field(data, "phone", 80), email: field(data, "email", 200), notes: field(data, "notes", 2000) });
+  const { error } = await supabase.schema("scheduler").from("sales_contacts").insert({ organization_id, name, title: field(data, "title", 120), phone: field(data, "phone", 80), mobile: field(data, "mobile", 80), email: field(data, "email", 200), notes: field(data, "notes", 2000) });
   if (error) throw new Error("담당자를 저장하지 못했습니다.");
   revalidatePath(salesPath(organization_id));
 }
@@ -102,7 +102,7 @@ export async function updateContact(data: FormData) {
   const id = validId(field(data, "id"));
   const name = field(data, "name", 120);
   if (!name) throw new Error("담당자 이름을 입력해 주세요.");
-  const { error } = await supabase.schema("scheduler").from("sales_contacts").update({ name, title: field(data, "title", 120), phone: field(data, "phone", 80), email: field(data, "email", 200), notes: field(data, "notes", 2000) }).eq("id", id).eq("organization_id", organization_id);
+  const { error } = await supabase.schema("scheduler").from("sales_contacts").update({ name, title: field(data, "title", 120), phone: field(data, "phone", 80), mobile: field(data, "mobile", 80), email: field(data, "email", 200), notes: field(data, "notes", 2000) }).eq("id", id).eq("organization_id", organization_id);
   if (error) throw new Error("담당자를 수정하지 못했습니다.");
   revalidatePath(salesPath(organization_id));
 }
@@ -166,7 +166,7 @@ export async function saveBusinessCard(input: { organizationId: string; imagePat
   const { supabase } = await requireAdmin();
   validId(input.organizationId);
   if (!/^([0-9a-f-]{36})\/([0-9a-f-]{36})\.(jpg|png|webp)$/i.test(input.imagePath) || !input.imagePath.startsWith(`${input.organizationId}/`) || input.ocrText.length > 20000) return { error: "명함 파일 경로 또는 OCR 내용을 확인해 주세요." };
-  const fields = Object.fromEntries(["name", "organization", "title", "phone", "email"].map((key) => [key, String(input.fields[key] ?? "").trim().slice(0, 500)]));
+  const fields = Object.fromEntries(["name", "organization", "title", "phone", "mobile", "email"].map((key) => [key, String(input.fields[key] ?? "").trim().slice(0, 500)]));
   const { error } = await supabase.schema("scheduler").from("sales_business_cards").insert({ organization_id: input.organizationId, image_path: input.imagePath, ocr_text: input.ocrText, ocr_fields: fields });
   if (error) return { error: "명함 정보를 저장하지 못했습니다." };
   revalidatePath(salesPath(input.organizationId));

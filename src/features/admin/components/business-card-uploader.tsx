@@ -10,8 +10,8 @@ import { BusinessCardCropper } from "@/features/admin/components/business-card-c
 import { BusinessCardFilePicker } from "@/features/admin/components/business-card-file-picker";
 
 const types: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" };
-const names: Record<string, string> = { name: "이름", organization: "기관·회사", title: "직책", phone: "전화", email: "이메일" };
-const emptyFields: SalesCardFields = { name: "", organization: "", title: "", phone: "", email: "" };
+const names: Record<keyof SalesCardFields, string> = { name: "이름", organization: "기관·회사", title: "직책", phone: "전화번호 (Tel)", mobile: "휴대폰 (Mobile)", email: "이메일" };
+const emptyFields: SalesCardFields = { name: "", organization: "", title: "", phone: "", mobile: "", email: "" };
 
 export function BusinessCardUploader({ organizationId }: { organizationId: string }) {
   const router = useRouter();
@@ -112,7 +112,7 @@ export function BusinessCardUploader({ organizationId }: { organizationId: strin
     {file && <BusinessCardCropper key={`${file.name}:${file.size}:${file.lastModified}`} file={file} busy={busy} canRefine={Boolean(croppedFile)} onCrop={(cropped, field) => field ? recognizeField(cropped, field) : recognize(cropped)} />}
     {file && <div className="mt-3 space-y-3">
       <label className="block text-sm">인식된 전체 텍스트<textarea value={ocrText} onChange={(event) => setOcrText(event.target.value)} rows={5} maxLength={20000} className="mt-1 w-full rounded-xl border border-slate-300 p-3" /></label>
-      <div className="grid gap-2 sm:grid-cols-2">{Object.entries(names).map(([key, name]) => <label key={key} className="text-sm">{name}<input value={fields[key as keyof SalesCardFields]} onChange={(event) => setFields({ ...fields, [key]: event.target.value })} maxLength={500} className="mt-1 w-full rounded-xl border border-slate-300 p-3" /></label>)}</div>
+      <div className="grid gap-2 sm:grid-cols-2">{Object.entries(names).map(([key, name]) => <label key={key} className="text-sm">{name}<input type={key === "phone" || key === "mobile" ? "tel" : "text"} value={fields[key as keyof SalesCardFields]} onChange={(event) => setFields({ ...fields, [key]: event.target.value })} maxLength={500} className="mt-1 w-full rounded-xl border border-slate-300 p-3" /></label>)}</div>
       <button type="button" onClick={() => void save()} disabled={busy} className="rounded-xl bg-indigo-600 px-4 py-3 font-semibold text-white disabled:opacity-50">명함과 텍스트 저장</button>
     </div>}
   </div>;
