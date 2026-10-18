@@ -238,7 +238,7 @@ test("new sales lead links the organization, contact and private business card",
   const writes = [];
   const supabase = { schema(schema) {
     assert.equal(schema, "scheduler");
-    return { from(table) { return { insert(row) {
+    return { rpc: async (name) => { assert.equal(name, "find_sales_organization"); return { data: null, error: null }; }, from(table) { return { insert(row) {
       writes.push({ table, row });
       if (table === "sales_contacts") return { select() { return { async single() { return { data: { id: "contact-id" }, error: null }; } }; } };
       return Promise.resolve({ error: null });
@@ -262,6 +262,65 @@ test("new sales lead links the organization, contact and private business card",
   assert.equal(writes[2].row.ocr_fields.mobile, "010-1234-5678");
   assert.equal(writes[2].row.contact_id, "contact-id");
   assert.equal(writes[2].row.image_path, input.imagePath);
+});
+
+test("another business card at the same organization adds a contact without another organization card", async () => {
+  const proposedId = "12345678-1234-1234-1234-123456789abc";
+  const existingId = "22222222-2222-2222-2222-222222222222";
+  const writes = [];
+  const supabase = { schema() { return {
+    rpc: async (name, args) => {
+      assert.equal(name, "find_sales_organization");
+      assert.equal(args.p_name, "한빛대학교");
+      return { data: existingId, error: null };
+    },
+    from(table) { return { insert(row) {
+      writes.push({ table, row });
+      if (table === "sales_contacts") return { select() { return { async single() { return { data: { id: "new-contact" }, error: null }; } }; } };
+      return Promise.resolve({ error: null });
+    } }; },
+  }; } };
+  const actions = load("src/app/admin/sales/actions.ts", {
+    "next/cache": { revalidatePath() {} }, "next/navigation": { redirect },
+    "@/server/calendar-sync": { scheduleCalendarSync() {} },
+    "@/server/google-calendar": { getCalendarConnection: async () => null },
+    "@/server/admin-auth": { requireAdmin: async () => ({ user: admin, supabase }) },
+  });
+  const result = await actions.createSalesLead({
+    organizationId: proposedId, name: " 한빛대학교 ", kind: "school",
+    contact: { name: "이영희", title: "교사", role: "실무 운영", phone: "", mobile: "010-1111-2222", email: "" },
+    imagePath: `${proposedId}/11111111-1111-1111-1111-111111111111.jpg`, ocrText: "한빛대학교 이영희",
+  });
+  assert.equal(result.id, existingId);
+  assert.deepEqual(writes.map(({ table }) => table), ["sales_contacts", "sales_business_cards"]);
+  assert.equal(writes[0].row.organization_id, existingId);
+  assert.equal(writes[0].row.role, "실무 운영");
+  assert.equal(writes[1].row.organization_id, existingId);
+  assert.equal(writes[1].row.contact_id, "new-contact");
+});
+
+test("a card uploaded from an organization page links to its selected contact", async () => {
+  const organizationId = "12345678-1234-1234-1234-123456789abc";
+  const contactId = "22222222-2222-2222-2222-222222222222";
+  let savedCard;
+  const supabase = { schema() { return { from(table) {
+    if (table === "sales_contacts") return { select() { return { eq() { return { eq() { return { maybeSingle: async () => ({ data: { id: contactId }, error: null }) }; } }; } }; } };
+    if (table === "sales_business_cards") return { insert(row) { savedCard = row; return Promise.resolve({ error: null }); } };
+    throw new Error(`Unexpected table: ${table}`);
+  } }; } };
+  const actions = load("src/app/admin/sales/actions.ts", {
+    "next/cache": { revalidatePath() {} }, "next/navigation": { redirect },
+    "@/server/calendar-sync": { scheduleCalendarSync() {} },
+    "@/server/google-calendar": { getCalendarConnection: async () => null },
+    "@/server/admin-auth": { requireAdmin: async () => ({ user: admin, supabase }) },
+  });
+  const result = await actions.saveBusinessCard({ organizationId, contactId,
+    imagePath: `${organizationId}/11111111-1111-1111-1111-111111111111.jpg`, ocrText: "담당자 명함",
+    fields: { name: "이영희", organization: "한빛대학교", title: "팀장", phone: "", mobile: "", email: "" },
+  });
+  assert.equal(result.error, "");
+  assert.equal(savedCard.organization_id, organizationId);
+  assert.equal(savedCard.contact_id, contactId);
 });
 
 test("resume validation enforces allowed extensions and the 5MB boundary", () => {

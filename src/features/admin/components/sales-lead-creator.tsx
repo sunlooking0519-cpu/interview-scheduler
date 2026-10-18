@@ -18,6 +18,7 @@ export function SalesLeadCreator() {
   const [file, setFile] = useState<File | null>(null);
   const [croppedFile, setCroppedFile] = useState<File | null>(null);
   const [fields, setFields] = useState<SalesCardFields>(emptyFields);
+  const [role, setRole] = useState("");
   const [kind, setKind] = useState<SalesKind>("institution");
   const [kindTouched, setKindTouched] = useState(false);
   const [ocrText, setOcrText] = useState("");
@@ -38,6 +39,7 @@ export function SalesLeadCreator() {
     setCroppedFile(null);
     setOcrText("");
     setFields(emptyFields);
+    setRole("");
     setKind("institution");
     setKindTouched(false);
     if (!next) { setMessage(""); return; }
@@ -89,8 +91,8 @@ export function SalesLeadCreator() {
     event.preventDefault();
     if (busy) return;
     if (!fields.organization.trim()) { setMessage("기관·학교·업체명을 입력해 주세요."); return; }
-    if ((fields.title.trim() || fields.phone.trim() || fields.mobile.trim() || fields.email.trim()) && !fields.name.trim()) {
-      setMessage("담당자의 직책·연락처를 저장하려면 이름도 입력해 주세요.");
+    if ((fields.title.trim() || role.trim() || fields.phone.trim() || fields.mobile.trim() || fields.email.trim()) && !fields.name.trim()) {
+      setMessage("담당자의 직책·역할·연락처를 저장하려면 이름도 입력해 주세요.");
       return;
     }
     if (file && !extensions[file.type]) { setMessage("명함 파일 형식을 확인해 주세요."); return; }
@@ -108,7 +110,7 @@ export function SalesLeadCreator() {
       }
       const result = await createSalesLead({
         organizationId, name: fields.organization, kind,
-        contact: { name: fields.name, title: fields.title, phone: fields.phone, mobile: fields.mobile, email: fields.email },
+        contact: { name: fields.name, title: fields.title, role, phone: fields.phone, mobile: fields.mobile, email: fields.email },
         imagePath, ocrText,
       });
       if (result.error) throw new Error(result.error);
@@ -123,7 +125,7 @@ export function SalesLeadCreator() {
 
   return <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
     <h2 className="text-lg font-bold">영업 대상 추가</h2>
-    <p className="mt-1 text-sm text-slate-600">명함 촬영 또는 앨범 선택 → 글자 인식 → 내용 확인 후 등록. 사진 없이 직접 입력할 수도 있습니다.</p>
+    <p className="mt-1 text-sm text-slate-600">명함 촬영 또는 앨범 선택 → 글자 인식 → 내용 확인 후 등록. 같은 이름의 기관이 있으면 새 기관 대신 그 기관에 담당자를 추가합니다.</p>
     <form onSubmit={(event) => void submit(event)} className="mt-4 space-y-5">
       <div className="rounded-xl border border-dashed border-indigo-300 bg-indigo-50/50 p-4">
         <h3 className="font-semibold text-indigo-950">1. 명함 사진 준비</h3>
@@ -137,6 +139,7 @@ export function SalesLeadCreator() {
         <label className="block text-sm font-medium">대상 유형<select value={kind} onChange={(event) => { setKind(event.target.value as SalesKind); setKindTouched(true); }} className={inputClass}><option value="institution">기관</option><option value="school">학교</option><option value="other">기타·업체</option></select></label>
         <label className="block text-sm font-medium">담당자 이름<input maxLength={120} value={fields.name} onChange={(event) => setFields({ ...fields, name: event.target.value })} placeholder="담당자 이름" className={inputClass}/></label>
         <label className="block text-sm font-medium">직책<input maxLength={120} value={fields.title} onChange={(event) => setFields({ ...fields, title: event.target.value })} placeholder="직책" className={inputClass}/></label>
+        <label className="block text-sm font-medium">담당 역할<input maxLength={200} value={role} onChange={(event) => setRole(event.target.value)} placeholder="예: 예산 결정, 교육 운영" className={inputClass}/></label>
         <label className="block text-sm font-medium">전화번호 (Tel)<input type="tel" maxLength={80} value={fields.phone} onChange={(event) => setFields({ ...fields, phone: event.target.value })} placeholder="회사·기관 전화번호" className={inputClass}/></label>
         <label className="block text-sm font-medium">휴대폰 (Mobile)<input type="tel" maxLength={80} value={fields.mobile} onChange={(event) => setFields({ ...fields, mobile: event.target.value })} placeholder="담당자 휴대폰" className={inputClass}/></label>
         <label className="block text-sm font-medium sm:col-span-2">이메일<input type="email" maxLength={200} value={fields.email} onChange={(event) => setFields({ ...fields, email: event.target.value })} placeholder="이메일" className={inputClass}/></label>

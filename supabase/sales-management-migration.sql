@@ -15,7 +15,7 @@ create table if not exists scheduler.sales_contacts (
   id uuid primary key default gen_random_uuid(),
   organization_id uuid not null references scheduler.sales_organizations(id) on delete cascade,
   name text not null check (length(trim(name)) between 1 and 120),
-  title text, phone text, mobile text, email text, notes text,
+  title text, "role" text, phone text, mobile text, email text, notes text,
   created_at timestamptz not null default now()
 );
 create table if not exists scheduler.sales_meetings (

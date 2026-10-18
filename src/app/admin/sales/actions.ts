@@ -16,58 +16,83 @@ export async function createSalesLead(input: {
   organizationId: string;
   name: string;
   kind: SalesKind;
-  contact: Omit<SalesCardFields, "organization">;
+  contact: Omit<SalesCardFields, "organization"> & { role?: string };
   imagePath: string;
   ocrText: string;
 }) {
   const { user, supabase } = await requireAdmin();
   const organizationId = input.organizationId;
-  const name = input.name.trim();
-  const contactInput = input.contact ?? { name: "", title: "", phone: "", mobile: "", email: "" };
+  const name = input.name.trim().replace(/\s+/g, " ");
+  const contactInput = input.contact ?? { name: "", title: "", role: "", phone: "", mobile: "", email: "" };
   const contact = Object.fromEntries(
-    (["name", "title", "phone", "mobile", "email"] as const).map((key) => [key, String(contactInput[key] ?? "").trim()]),
-  ) as Omit<SalesCardFields, "organization">;
+    (["name", "title", "role", "phone", "mobile", "email"] as const).map((key) => [key, String(contactInput[key] ?? "").trim()]),
+  ) as Omit<SalesCardFields, "organization"> & { role: string };
   const validPath = !input.imagePath || new RegExp(`^${organizationId}/[0-9a-f-]{36}\\.(jpg|png|webp)$`, "i").test(input.imagePath);
   if (!uuidPattern.test(organizationId) || !name || name.length > 200 || !["institution", "school", "other"].includes(input.kind)
-    || contact.name.length > 120 || contact.title.length > 120 || contact.phone.length > 80 || contact.mobile.length > 80 || contact.email.length > 200
-    || ((contact.title || contact.phone || contact.mobile || contact.email) && !contact.name) || !validPath || input.ocrText.length > 20000) {
+    || contact.name.length > 120 || contact.title.length > 120 || contact.role.length > 200 || contact.phone.length > 80 || contact.mobile.length > 80 || contact.email.length > 200
+    || ((contact.title || contact.role || contact.phone || contact.mobile || contact.email) && !contact.name) || !validPath || input.ocrText.length > 20000) {
     return { id: "", error: "기관명, 담당자 정보와 명함 파일을 확인해 주세요." };
   }
   const db = supabase.schema("scheduler");
-  const { error: organizationError } = await db.from("sales_organizations").insert({ id: organizationId, name, kind: input.kind, created_by: user.id });
-  if (organizationError) return { id: "", error: "영업 대상을 저장하지 못했습니다. 잠시 후 다시 시도해 주세요." };
+  const findOrganization = () => db.rpc("find_sales_organization", { p_name: name });
+  const lookup = await findOrganization();
+  if (lookup.error) return { id: "", error: "기존 기관을 확인하지 못했습니다. 기관 중복 정리 SQL을 먼저 실행해 주세요." };
+  let savedOrganizationId = lookup.data as string | null;
+  let createdOrganization = false;
+  if (!savedOrganizationId) {
+    const { error } = await db.from("sales_organizations").insert({ id: organizationId, name, kind: input.kind, created_by: user.id });
+    if (error?.code === "23505") {
+      const retry = await findOrganization();
+      if (retry.error || !retry.data) return { id: "", error: "기관 등록이 겹쳤습니다. 다시 시도해 주세요." };
+      savedOrganizationId = retry.data as string;
+    } else if (error) {
+      return { id: "", error: "영업 대상을 저장하지 못했습니다. 잠시 후 다시 시도해 주세요." };
+    } else {
+      savedOrganizationId = organizationId;
+      createdOrganization = true;
+    }
+  }
 
   let contactId: string | null = null;
   if (contact.name) {
-    const { data, error } = await db.from("sales_contacts").insert({ organization_id: organizationId, ...contact }).select("id").single();
+    const { data, error } = await db.from("sales_contacts").insert({ organization_id: savedOrganizationId, ...contact }).select("id").single();
     if (error || !data) {
-      await db.from("sales_organizations").delete().eq("id", organizationId);
+      if (createdOrganization) await db.from("sales_organizations").delete().eq("id", savedOrganizationId);
       return { id: "", error: "담당자 저장에 실패했습니다. 다시 시도해 주세요." };
     }
     contactId = data.id;
   }
   if (input.imagePath) {
     const { error } = await db.from("sales_business_cards").insert({
-      organization_id: organizationId, contact_id: contactId, image_path: input.imagePath,
+      organization_id: savedOrganizationId, contact_id: contactId, image_path: input.imagePath,
       ocr_text: input.ocrText, ocr_fields: { ...contact, organization: name },
     });
     if (error) {
-      await db.from("sales_organizations").delete().eq("id", organizationId);
+      if (createdOrganization) await db.from("sales_organizations").delete().eq("id", savedOrganizationId);
+      else if (contactId) await db.from("sales_contacts").delete().eq("id", contactId).eq("organization_id", savedOrganizationId);
       return { id: "", error: "명함 저장에 실패했습니다. 다시 시도해 주세요." };
     }
   }
   revalidatePath("/admin/sales");
-  revalidatePath(salesPath(organizationId));
-  return { id: organizationId, error: "" };
+  revalidatePath(salesPath(savedOrganizationId));
+  return { id: savedOrganizationId, error: "" };
 }
 
 export async function createOrganization(data: FormData) {
   const { user, supabase } = await requireAdmin();
-  const name = field(data, "name", 200);
+  const name = field(data, "name", 200).replace(/\s+/g, " ");
   const kind = field(data, "kind");
   if (!name || !["institution", "school", "other"].includes(kind)) throw new Error("기관명과 유형을 확인해 주세요.");
-  const { data: row, error } = await supabase.schema("scheduler").from("sales_organizations")
+  const db = supabase.schema("scheduler");
+  const existing = await db.rpc("find_sales_organization", { p_name: name });
+  if (existing.error) throw new Error("기관 중복 정리 SQL을 먼저 실행해 주세요.");
+  if (existing.data) redirect(salesPath(existing.data as string));
+  const { data: row, error } = await db.from("sales_organizations")
     .insert({ name, kind, created_by: user.id }).select("id").single();
+  if (error?.code === "23505") {
+    const retry = await db.rpc("find_sales_organization", { p_name: name });
+    if (retry.data) redirect(salesPath(retry.data as string));
+  }
   if (error || !row) throw new Error("기관을 저장하지 못했습니다. 영업관리 SQL 마이그레이션을 확인해 주세요.");
   revalidatePath("/admin/sales");
   redirect(salesPath(row.id));
@@ -91,7 +116,7 @@ export async function createContact(data: FormData) {
   const organization_id = validId(field(data, "organization_id"));
   const name = field(data, "name", 120);
   if (!name) throw new Error("담당자 이름을 입력해 주세요.");
-  const { error } = await supabase.schema("scheduler").from("sales_contacts").insert({ organization_id, name, title: field(data, "title", 120), phone: field(data, "phone", 80), mobile: field(data, "mobile", 80), email: field(data, "email", 200), notes: field(data, "notes", 2000) });
+  const { error } = await supabase.schema("scheduler").from("sales_contacts").insert({ organization_id, name, title: field(data, "title", 120), role: field(data, "role", 200), phone: field(data, "phone", 80), mobile: field(data, "mobile", 80), email: field(data, "email", 200), notes: field(data, "notes", 2000) });
   if (error) throw new Error("담당자를 저장하지 못했습니다.");
   revalidatePath(salesPath(organization_id));
 }
@@ -102,7 +127,7 @@ export async function updateContact(data: FormData) {
   const id = validId(field(data, "id"));
   const name = field(data, "name", 120);
   if (!name) throw new Error("담당자 이름을 입력해 주세요.");
-  const { error } = await supabase.schema("scheduler").from("sales_contacts").update({ name, title: field(data, "title", 120), phone: field(data, "phone", 80), mobile: field(data, "mobile", 80), email: field(data, "email", 200), notes: field(data, "notes", 2000) }).eq("id", id).eq("organization_id", organization_id);
+  const { error } = await supabase.schema("scheduler").from("sales_contacts").update({ name, title: field(data, "title", 120), role: field(data, "role", 200), phone: field(data, "phone", 80), mobile: field(data, "mobile", 80), email: field(data, "email", 200), notes: field(data, "notes", 2000) }).eq("id", id).eq("organization_id", organization_id);
   if (error) throw new Error("담당자를 수정하지 못했습니다.");
   revalidatePath(salesPath(organization_id));
 }
@@ -162,13 +187,32 @@ export async function restoreProposalVersion(proposalId: string, versionId: stri
   return saveProposal(proposalId, expectedRevision, data.title, data.body);
 }
 
-export async function saveBusinessCard(input: { organizationId: string; imagePath: string; ocrText: string; fields: Record<string, string> }) {
+export async function saveBusinessCard(input: { organizationId: string; contactId?: string; imagePath: string; ocrText: string; fields: Record<string, string> }) {
   const { supabase } = await requireAdmin();
   validId(input.organizationId);
   if (!/^([0-9a-f-]{36})\/([0-9a-f-]{36})\.(jpg|png|webp)$/i.test(input.imagePath) || !input.imagePath.startsWith(`${input.organizationId}/`) || input.ocrText.length > 20000) return { error: "명함 파일 경로 또는 OCR 내용을 확인해 주세요." };
-  const fields = Object.fromEntries(["name", "organization", "title", "phone", "mobile", "email"].map((key) => [key, String(input.fields[key] ?? "").trim().slice(0, 500)]));
-  const { error } = await supabase.schema("scheduler").from("sales_business_cards").insert({ organization_id: input.organizationId, image_path: input.imagePath, ocr_text: input.ocrText, ocr_fields: fields });
-  if (error) return { error: "명함 정보를 저장하지 못했습니다." };
+  const fields = Object.fromEntries(["name", "organization", "title", "phone", "mobile", "email", "role"].map((key) => [key, String(input.fields[key] ?? "").trim().slice(0, key === "role" ? 200 : 500)]));
+  if (!input.contactId && !fields.name) return { error: "새 담당자 이름을 입력해 주세요." };
+  const db = supabase.schema("scheduler");
+  let contactId: string | null = null;
+  let createdContact = false;
+  if (input.contactId) {
+    if (!uuidPattern.test(input.contactId)) return { error: "담당자를 다시 선택해 주세요." };
+    const { data, error } = await db.from("sales_contacts").select("id").eq("id", input.contactId).eq("organization_id", input.organizationId).maybeSingle();
+    if (error || !data) return { error: "이 기관의 담당자를 다시 선택해 주세요." };
+    contactId = data.id;
+  } else if (fields.name) {
+    if (fields.name.length > 120 || fields.title.length > 120 || fields.phone.length > 80 || fields.mobile.length > 80 || fields.email.length > 200) return { error: "담당자 정보를 확인해 주세요." };
+    const { data, error } = await db.from("sales_contacts").insert({ organization_id: input.organizationId, name: fields.name, title: fields.title, role: fields.role, phone: fields.phone, mobile: fields.mobile, email: fields.email }).select("id").single();
+    if (error || !data) return { error: "담당자를 저장하지 못했습니다." };
+    contactId = data.id;
+    createdContact = true;
+  }
+  const { error } = await db.from("sales_business_cards").insert({ organization_id: input.organizationId, contact_id: contactId, image_path: input.imagePath, ocr_text: input.ocrText, ocr_fields: fields });
+  if (error) {
+    if (createdContact && contactId) await db.from("sales_contacts").delete().eq("id", contactId).eq("organization_id", input.organizationId);
+    return { error: "명함 정보를 저장하지 못했습니다." };
+  }
   revalidatePath(salesPath(input.organizationId));
   return { error: "" };
 }

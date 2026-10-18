@@ -13,12 +13,14 @@ const types: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png",
 const names: Record<keyof SalesCardFields, string> = { name: "이름", organization: "기관·회사", title: "직책", phone: "전화번호 (Tel)", mobile: "휴대폰 (Mobile)", email: "이메일" };
 const emptyFields: SalesCardFields = { name: "", organization: "", title: "", phone: "", mobile: "", email: "" };
 
-export function BusinessCardUploader({ organizationId }: { organizationId: string }) {
+export function BusinessCardUploader({ organizationId, contacts }: { organizationId: string; contacts: { id: string; name: string; title: string | null; role: string | null }[] }) {
   const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
   const [croppedFile, setCroppedFile] = useState<File | null>(null);
   const [ocrText, setOcrText] = useState("");
   const [fields, setFields] = useState<SalesCardFields>(emptyFields);
+  const [contactId, setContactId] = useState("");
+  const [role, setRole] = useState("");
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -35,6 +37,8 @@ export function BusinessCardUploader({ organizationId }: { organizationId: strin
     setCroppedFile(null);
     setOcrText("");
     setFields(emptyFields);
+    setContactId("");
+    setRole("");
     setStatus(next ? "사진이 선택됐습니다. 아래에서 사진을 확인하고 '이 사진 글자 인식'을 눌러 주세요." : "");
   }
 
@@ -79,6 +83,7 @@ export function BusinessCardUploader({ organizationId }: { organizationId: strin
   async function save() {
     const imageFile = croppedFile ?? file;
     if (!imageFile || busy) return;
+    if (!contactId && !fields.name.trim()) { setStatus("새 담당자로 등록하려면 이름을 입력해 주세요."); return; }
     setBusy(true);
     setStatus("명함 저장 중…");
     try {
@@ -86,7 +91,7 @@ export function BusinessCardUploader({ organizationId }: { organizationId: strin
       const supabase = createClient();
       const upload = await supabase.storage.from("sales-cards").upload(path, imageFile, { contentType: imageFile.type, upsert: false });
       if (upload.error) throw new Error("이미지 업로드에 실패했습니다. 버킷과 관리자 정책을 확인해 주세요.");
-      const result = await saveBusinessCard({ organizationId, imagePath: path, ocrText, fields });
+      const result = await saveBusinessCard({ organizationId, contactId: contactId || undefined, imagePath: path, ocrText, fields: { ...fields, role } });
       if (result.error) {
         await supabase.storage.from("sales-cards").remove([path]);
         throw new Error(result.error);
@@ -95,6 +100,8 @@ export function BusinessCardUploader({ organizationId }: { organizationId: strin
       setCroppedFile(null);
       setOcrText("");
       setFields(emptyFields);
+      setContactId("");
+      setRole("");
       setStatus("명함을 저장했습니다.");
       router.refresh();
     } catch (error) {
@@ -112,7 +119,10 @@ export function BusinessCardUploader({ organizationId }: { organizationId: strin
     {file && <BusinessCardCropper key={`${file.name}:${file.size}:${file.lastModified}`} file={file} busy={busy} canRefine={Boolean(croppedFile)} onCrop={(cropped, field) => field ? recognizeField(cropped, field) : recognize(cropped)} />}
     {file && <div className="mt-3 space-y-3">
       <label className="block text-sm">인식된 전체 텍스트<textarea value={ocrText} onChange={(event) => setOcrText(event.target.value)} rows={5} maxLength={20000} className="mt-1 w-full rounded-xl border border-slate-300 p-3" /></label>
+      <label className="block text-sm font-medium">연결할 담당자<select value={contactId} onChange={(event) => setContactId(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-300 bg-white p-3"><option value="">새 담당자로 등록</option>{contacts.map((contact) => <option key={contact.id} value={contact.id}>{contact.name}{contact.title ? ` · ${contact.title}` : ""}{contact.role ? ` · ${contact.role}` : ""}</option>)}</select></label>
       <div className="grid gap-2 sm:grid-cols-2">{Object.entries(names).map(([key, name]) => <label key={key} className="text-sm">{name}<input type={key === "phone" || key === "mobile" ? "tel" : "text"} value={fields[key as keyof SalesCardFields]} onChange={(event) => setFields({ ...fields, [key]: event.target.value })} maxLength={500} className="mt-1 w-full rounded-xl border border-slate-300 p-3" /></label>)}</div>
+      {!contactId && <label className="block text-sm">담당 역할<input value={role} onChange={(event) => setRole(event.target.value)} maxLength={200} placeholder="예: 예산 결정, 교육 운영" className="mt-1 w-full rounded-xl border border-slate-300 p-3" /></label>}
+      {contactId && <p className="text-xs text-slate-600">선택한 담당자에게 명함을 연결합니다. 담당자 정보와 역할은 위 담당자 카드에서 수정할 수 있습니다.</p>}
       <button type="button" onClick={() => void save()} disabled={busy} className="rounded-xl bg-indigo-600 px-4 py-3 font-semibold text-white disabled:opacity-50">명함과 텍스트 저장</button>
     </div>}
   </div>;
