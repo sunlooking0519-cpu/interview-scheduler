@@ -76,6 +76,15 @@ test("business card fields ignore slogans, prefer mobile numbers, and keep uncer
   assert.equal(card.classifySalesCard(council.organization), "institution");
 });
 
+test("business card OCR does not mistake organizations, departments or slogans for names", () => {
+  const card = load("src/features/admin/sales-card-ocr.ts", {});
+  for (const falseName of ["사업혁명", "위원회", "공식인증", "바밋배반"]) {
+    assert.equal(card.guessSalesCardFields(`전남광주통합특별시의회\n${falseName}\n010-4484-5255`).name, "");
+  }
+  assert.equal(card.guessSalesCardFields("(주)와이즈교육\n김경희 | 국장").organization, "(주)와이즈교육");
+  assert.equal(card.guessSalesCardFields("(주)와이즈교육\n김경희 | 국장").name, "김경희");
+});
+
 test("business card recognition uses only the browser OCR worker", async () => {
   let recognized = 0;
   let terminated = 0;
@@ -129,6 +138,26 @@ test("business card recognition retries the identity area when the first pass mi
   assert.deepEqual(modes, ["11", "6"]);
   assert.equal(result.identityText, "김태영\nTAEJIN GROUP");
   assert.equal(closed, 1);
+  assert.equal(terminated, 1);
+});
+
+test("selected name area uses Korean-only single-line OCR", async () => {
+  let terminated = 0;
+  const { recognizeBusinessCardField } = load("src/features/admin/recognize-business-card.ts", {
+    "@/features/admin/sales-card-ocr": { guessSalesCardFields: () => ({}) },
+    "tesseract.js": {
+      PSM: { SINGLE_LINE: "7" },
+      async createWorker(language) {
+        assert.equal(language, "kor");
+        return {
+          async setParameters(params) { assert.equal(params.tessedit_pageseg_mode, "7"); },
+          async recognize() { return { data: { text: " 정 은 지 " } }; },
+          async terminate() { terminated += 1; },
+        };
+      },
+    },
+  });
+  assert.equal(await recognizeBusinessCardField({ type: "image/jpeg", size: 1024 }, "name"), "정 은 지");
   assert.equal(terminated, 1);
 });
 

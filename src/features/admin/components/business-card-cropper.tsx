@@ -1,16 +1,18 @@
 "use client";
 
 import { useEffect, useRef, useState, type PointerEvent } from "react";
+import type { CardField } from "@/features/admin/recognize-business-card";
 
 type Point = { x: number; y: number };
 type Selection = { x: number; y: number; width: number; height: number };
 
 function clamp(value: number) { return Math.max(0, Math.min(1, value)); }
 
-export function BusinessCardCropper({ file, busy, onCrop }: {
+export function BusinessCardCropper({ file, busy, canRefine, onCrop }: {
   file: File;
   busy: boolean;
-  onCrop: (cropped: File) => Promise<void>;
+  canRefine: boolean;
+  onCrop: (cropped: File, field?: CardField) => Promise<void>;
 }) {
   const imageRef = useRef<HTMLImageElement>(null);
   const startRef = useRef<Point | null>(null);
@@ -54,9 +56,10 @@ export function BusinessCardCropper({ file, busy, onCrop }: {
     setSelection((current) => current && current.width >= 0.05 && current.height >= 0.05 ? current : null);
   }
 
-  async function cropAndRecognize() {
+  async function cropAndRecognize(field?: CardField) {
     const image = imageRef.current;
     if (!image?.naturalWidth || !image.naturalHeight || busy || cropping) return;
+    if (field && !selection) return;
     setCropping(true);
     setError("");
     try {
@@ -73,7 +76,7 @@ export function BusinessCardCropper({ file, busy, onCrop }: {
       context.fillRect(0, 0, canvas.width, canvas.height);
       context.drawImage(image, Math.round(area.x * image.naturalWidth), Math.round(area.y * image.naturalHeight), sourceWidth, sourceHeight, 0, 0, canvas.width, canvas.height);
       const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob((result) => result ? resolve(result) : reject(new Error("사진을 처리할 수 없습니다.")), "image/jpeg", 0.92));
-      await onCrop(new File([blob], "business-card.jpg", { type: "image/jpeg" }));
+      await onCrop(new File([blob], "business-card.jpg", { type: "image/jpeg" }), field);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "사진을 처리할 수 없습니다.");
     } finally {
@@ -92,7 +95,11 @@ export function BusinessCardCropper({ file, busy, onCrop }: {
       </div>
     </div>
     <div className="flex flex-wrap gap-2">
-      <button type="button" onClick={() => void cropAndRecognize()} disabled={busy || cropping || !previewUrl} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{busy || cropping ? "인식 중…" : "선택 영역 글자 인식"}</button>
+      <button type="button" onClick={() => void cropAndRecognize()} disabled={busy || cropping || !previewUrl} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{busy || cropping ? "인식 중…" : "명함 전체 인식"}</button>
+      {canRefine && <>
+        <button type="button" onClick={() => void cropAndRecognize("organization")} disabled={busy || cropping || !selection} className="rounded-lg border border-indigo-300 bg-white px-4 py-2 text-sm font-semibold text-indigo-700 disabled:opacity-50">선택한 기관명 다시 읽기</button>
+        <button type="button" onClick={() => void cropAndRecognize("name")} disabled={busy || cropping || !selection} className="rounded-lg border border-indigo-300 bg-white px-4 py-2 text-sm font-semibold text-indigo-700 disabled:opacity-50">선택한 이름 다시 읽기</button>
+      </>}
       {selection && <button type="button" onClick={() => setSelection(null)} disabled={busy || cropping} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm">전체 사진 선택</button>}
     </div>
     {error && <p role="alert" className="text-sm text-red-600">{error}</p>}

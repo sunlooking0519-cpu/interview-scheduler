@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "../../../../lib/supabase/client";
 import { createSalesLead } from "@/app/admin/sales/actions";
 import { classifySalesCard, guessSalesCardFields, type SalesCardFields, type SalesKind } from "@/features/admin/sales-card-ocr";
-import { recognizeBusinessCard } from "@/features/admin/recognize-business-card";
+import { recognizeBusinessCard, recognizeBusinessCardField, type CardField } from "@/features/admin/recognize-business-card";
 import { BusinessCardCropper } from "@/features/admin/components/business-card-cropper";
 
 const extensions: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" };
@@ -61,6 +61,27 @@ export function SalesLeadCreator() {
     }
   }
 
+  async function recognizeField(cropped: File, field: CardField) {
+    setBusy(true);
+    setMessage(`${field === "name" ? "이름" : "기관명"} 영역을 다시 읽는 중입니다…`);
+    try {
+      const text = await recognizeBusinessCardField(cropped, field);
+      const value = guessSalesCardFields(text)[field];
+      if (!value) {
+        setMessage(`선택 영역에서 ${field === "name" ? "이름" : "기관명"}을 확실히 찾지 못했습니다. 영역을 좁혀 다시 시도하거나 사진을 보고 직접 입력해 주세요.`);
+        return;
+      }
+      setFields((current) => ({ ...current, [field]: value }));
+      if (field === "organization" && !kindTouched) setKind(classifySalesCard(value));
+      setOcrText((current) => [current, text].filter(Boolean).join("\n"));
+      setMessage(`${field === "name" ? "이름" : "기관명"} 후보 '${value}'를 입력했습니다. 사진과 대조해 확인해 주세요.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "선택 영역을 읽지 못했습니다. 직접 입력해 주세요.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (busy) return;
@@ -105,7 +126,7 @@ export function SalesLeadCreator() {
         <label htmlFor="sales-card-photo" className="block font-semibold text-indigo-950">명함 촬영·사진 선택</label>
         <input id="sales-card-photo" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" disabled={busy} onChange={(event) => selectCard(event.target.files?.[0] ?? null)} className="mt-2 block w-full text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-indigo-600 file:px-3 file:py-2 file:font-semibold file:text-white" />
         <p className="mt-2 text-xs text-slate-600">명함을 밝고 선명하게 촬영해 주세요. JPG·PNG·WebP, 최대 10MB. 글자 인식은 기기에서 처리하며 OCR 서비스로 사진을 전송하지 않습니다. 등록한 명함은 관리자 전용 비공개 저장소에 보관됩니다.</p>
-        {file && <BusinessCardCropper key={`${file.name}:${file.size}:${file.lastModified}`} file={file} busy={busy} onCrop={recognizeCard} />}
+        {file && <BusinessCardCropper key={`${file.name}:${file.size}:${file.lastModified}`} file={file} busy={busy} canRefine={Boolean(croppedFile)} onCrop={(cropped, field) => field ? recognizeField(cropped, field) : recognizeCard(cropped)} />}
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="block text-sm font-medium sm:col-span-2">기관·학교·업체명 <span className="text-red-600">*</span><input required maxLength={200} value={fields.organization} onChange={(event) => { const organization = event.target.value; setFields({ ...fields, organization }); if (!kindTouched) setKind(organization ? classifySalesCard(organization) : "institution"); }} placeholder="기관·학교·업체명" className={inputClass}/></label>

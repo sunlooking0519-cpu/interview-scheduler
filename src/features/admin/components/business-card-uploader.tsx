@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "../../../../lib/supabase/client";
 import { saveBusinessCard } from "@/app/admin/sales/actions";
 import { guessSalesCardFields, type SalesCardFields } from "@/features/admin/sales-card-ocr";
-import { recognizeBusinessCard } from "@/features/admin/recognize-business-card";
+import { recognizeBusinessCard, recognizeBusinessCardField, type CardField } from "@/features/admin/recognize-business-card";
 import { BusinessCardCropper } from "@/features/admin/components/business-card-cropper";
 
 const types: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" };
@@ -53,6 +53,26 @@ export function BusinessCardUploader({ organizationId }: { organizationId: strin
     }
   }
 
+  async function recognizeField(cropped: File, field: CardField) {
+    setBusy(true);
+    setStatus(`${field === "name" ? "이름" : "기관명"} 영역을 다시 읽는 중입니다…`);
+    try {
+      const text = await recognizeBusinessCardField(cropped, field);
+      const value = guessSalesCardFields(text)[field];
+      if (!value) {
+        setStatus("선택 영역에서 확실한 결과를 찾지 못했습니다. 영역을 좁혀 다시 시도하거나 직접 입력해 주세요.");
+        return;
+      }
+      setFields((current) => ({ ...current, [field]: value }));
+      setOcrText((current) => [current, text].filter(Boolean).join("\n"));
+      setStatus(`'${value}'를 입력했습니다. 사진과 대조해 확인해 주세요.`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "선택 영역을 읽지 못했습니다. 직접 입력해 주세요.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function save() {
     const imageFile = croppedFile ?? file;
     if (!imageFile || busy) return;
@@ -84,7 +104,7 @@ export function BusinessCardUploader({ organizationId }: { organizationId: strin
   return <div className="mt-4 rounded-xl bg-slate-50 p-3">
     <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" aria-label="명함 사진 선택" disabled={busy} onChange={(event) => selectCard(event.target.files?.[0] ?? null)} className="w-full text-sm" />
     <p className="mt-2 text-xs text-slate-600">JPG·PNG·WebP, 최대 10MB. 글자 인식은 기기에서 처리합니다. 저장하면 명함은 관리자 전용 비공개 저장소에 보관됩니다.</p>
-    {file && <BusinessCardCropper key={`${file.name}:${file.size}:${file.lastModified}`} file={file} busy={busy} onCrop={recognize} />}
+    {file && <BusinessCardCropper key={`${file.name}:${file.size}:${file.lastModified}`} file={file} busy={busy} canRefine={Boolean(croppedFile)} onCrop={(cropped, field) => field ? recognizeField(cropped, field) : recognize(cropped)} />}
     <p role="status" className="mt-2 text-sm text-slate-600">{status}</p>
     {file && <div className="mt-3 space-y-3">
       <label className="block text-sm">인식된 전체 텍스트<textarea value={ocrText} onChange={(event) => setOcrText(event.target.value)} rows={5} maxLength={20000} className="mt-1 w-full rounded-xl border border-slate-300 p-3" /></label>

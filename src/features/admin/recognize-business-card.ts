@@ -3,11 +3,16 @@ import { guessSalesCardFields } from "@/features/admin/sales-card-ocr";
 const supportedTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 export type CardRecognition = { text: string; identityText: string; source: "local"; note: string };
+export type CardField = "organization" | "name";
 
-export async function recognizeBusinessCard(file: File): Promise<CardRecognition> {
+function assertSupported(file: File) {
   if (!supportedTypes.has(file.type) || file.size === 0 || file.size > 10 * 1024 * 1024) {
     throw new Error("JPG, PNG, WebP 사진을 10MB 이하로 선택해 주세요.");
   }
+}
+
+export async function recognizeBusinessCard(file: File): Promise<CardRecognition> {
+  assertSupported(file);
 
   // Browser OCR keeps business-card images off paid OCR APIs.
   const { createWorker, PSM } = await import("tesseract.js");
@@ -43,6 +48,20 @@ export async function recognizeBusinessCard(file: File): Promise<CardRecognition
         ? "기기에서 글자를 인식했습니다. 비어 있거나 잘못 읽힌 항목을 확인해 주세요."
         : "글자를 찾지 못했습니다. 명함 영역을 다시 지정하거나 직접 입력해 주세요.",
     };
+  } finally {
+    await worker.terminate();
+  }
+}
+
+export async function recognizeBusinessCardField(file: File, field: CardField): Promise<string> {
+  assertSupported(file);
+  const { createWorker, PSM } = await import("tesseract.js");
+  // A manually selected name area contains Korean text; keeping English out of this pass
+  // prevents nearby Latin logos from competing with Korean glyphs.
+  const worker = await createWorker(field === "name" ? "kor" : "kor+eng");
+  try {
+    await worker.setParameters({ tessedit_pageseg_mode: PSM.SINGLE_LINE });
+    return (await worker.recognize(file)).data.text.trim();
   } finally {
     await worker.terminate();
   }
