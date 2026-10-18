@@ -3,6 +3,7 @@ import { TimeSlotManager } from "@/features/admin/components/time-slot-manager";
 import { BookingTable } from "@/features/admin/components/booking-table";
 import { requireAdmin } from "@/server/admin-auth";
 import { getInterviewReservations, type InterviewReservation } from "@/server/interviews";
+import { getUpcomingReservationStats } from "@/features/admin/reservation-stats";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -20,12 +21,11 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
     loadError = "예약 데이터를 불러오지 못했습니다. scheduler 스키마의 API 노출 및 관리자 조회 권한을 확인해 주세요.";
   }
 
-  const confirmedCount = interviews.filter(({ status }) => status === "confirmed").length;
-  const cancelledCount = interviews.filter(({ status }) => status === "cancelled").length;
+  const counts = getUpcomingReservationStats(interviews);
   const stats = [
-    ["전체 예약", interviews.length],
-    ["예약 확정", confirmedCount],
-    ["예약 취소", cancelledCount],
+    ["전체 예약", counts.total],
+    ["예약 확정", counts.confirmed],
+    ["예약 취소", counts.cancelled],
   ] as const;
 
   return (
@@ -41,6 +41,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
         </form>
       </div>
       {loadError && <p role="alert" className="mt-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{loadError}</p>}
+      <p className="mt-5 text-sm text-slate-600">아직 지나지 않은 면접 일정 기준 · 한국시간(KST) · 취소 건 포함</p>
       <div className="my-5 grid grid-cols-3 gap-2 sm:my-8 sm:gap-4">
         {stats.map(([label, count]) => <section key={label} className="min-w-0 rounded-xl border border-slate-200 bg-white px-3 py-4 sm:rounded-2xl sm:p-6"><h2 className="text-xs text-slate-500 sm:text-sm">{label}</h2><p className="mt-2 break-all text-2xl font-bold sm:mt-3 sm:text-3xl">{count}<span className="ml-1 text-xs font-normal text-slate-400 sm:ml-2 sm:text-sm">건</span></p></section>)}
       </div>

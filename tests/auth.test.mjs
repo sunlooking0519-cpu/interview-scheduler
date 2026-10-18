@@ -29,6 +29,18 @@ const bookingDates = load("src/features/booking/dates.ts", {});
 const admin = { id: "admin-id", email: "admin@example.com", app_metadata: { role: "admin" } };
 const redirect = (path) => { throw new Error(`REDIRECT:${path}`); };
 
+test("dashboard counts only reservations whose interview time has not passed in Korea", () => {
+  const { getUpcomingReservationStats } = load("src/features/admin/reservation-stats.ts", {});
+  const now = new Date("2026-10-18T10:00:00+09:00");
+  const rows = [
+    { interview_date: "2026-10-17", interview_time: "16:00", status: "cancelled" },
+    { interview_date: "2026-10-18", interview_time: "09:30", status: "confirmed" },
+    { interview_date: "2026-10-18", interview_time: "10:00", status: "confirmed" },
+    { interview_date: "2026-10-19", interview_time: "11:00", status: "cancelled" },
+  ];
+  assert.deepEqual({ ...getUpcomingReservationStats(rows, now) }, { total: 2, confirmed: 1, cancelled: 1 });
+});
+
 test("business card OCR suggests an organization type and extracts contact details", () => {
   const card = load("src/features/admin/sales-card-ocr.ts", {});
   const fields = card.guessSalesCardFields("한빛대학교\n김민수\n입학처 팀장\n010-1234-5678\nminsu@example.com");
