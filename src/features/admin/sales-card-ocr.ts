@@ -2,11 +2,64 @@ export type SalesCardFields = { name: string; organization: string; title: strin
 export type SalesKind = "institution" | "school" | "other";
 
 const schoolPattern = /학교|대학|학원|교육청|university|college|school|academy/i;
-const institutionPattern = /기관|센터|연구소|연구원|협회|재단|공단|공사|복지관|병원|시청|구청|군청|관공서|institute|foundation|center|association|hospital/i;
-const organizationPattern = /학교|대학|학원|교육청|기관|센터|연구소|연구원|협회|재단|공단|공사|복지관|병원|시청|구청|군청|회사|기업|주식회사|㈜|\(주\)|법인|university|college|school|academy|institute|foundation|center|association|hospital|corp|company|inc\.?|ltd\.?/i;
-const titlePattern = /대표|이사|실장|팀장|과장|부장|차장|대리|사원|교수|교사|원장|담당|매니저|director|manager|professor|teacher/i;
-const phonePattern = /(?:\+?82[- .]?)?0\d{1,2}[- .]?\d{3,4}[- .]?\d{4}/;
+const institutionPattern = /기관|센터|연구소|연구원|협회|재단|공단|공사|복지관|병원|시청|구청|군청|관공서|의회|추진단|institute|foundation|center|association|hospital/i;
+const koreanOrganizationPattern = /[가-힣][가-힣0-9·()\s]{1,70}?(?:대학교|대학|학교|교육청|연구소|연구원|협회|재단|공단|공사|복지관|병원|시청|구청|군청|의회|추진단|센터|그룹|주식회사|회사|법인)/;
+const englishOrganizationPattern = /[A-Za-z][A-Za-z0-9&.'-]*(?:\s+[A-Za-z][A-Za-z0-9&.'-]*){0,5}\s+(?:group|corp(?:oration)?|company|inc\.?|ltd\.?|university|college|school|academy|institute|foundation|center|association|hospital)\b/i;
+const titlePattern = /대표이사|대표|위원장|회장|부회장|이사장|이사|실장|팀장|과장|부장|차장|대리|사원|교수|교사|원장|담당|매니저|CEO|director|manager|professor|teacher/i;
+const mobilePattern = /(?:\+82[- .]?)?010[- .]?\d{3,4}[- .]?\d{4}/;
+const phonePattern = /(?:\+82[- .]?)?0\d{1,2}[- .]?\d{3,4}[- .]?\d{4}/;
 const emailPattern = /[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/;
+const namePattern = /(?:^|[^가-힣A-Za-z])([가-힣](?:\s*[가-힣]){2,3})(?=$|[^가-힣A-Za-z])/g;
+const departmentEnding = /(?:처|팀|과|실|부|국|원|단)$/;
+
+function linesOf(text: string) {
+  return text.split(/\r?\n/).map((line) => line.replace(/\s+/g, " ").trim()).filter(Boolean);
+}
+
+function findOrganization(lines: string[]) {
+  for (const line of lines) {
+    const korean = line.match(koreanOrganizationPattern)?.[0]?.trim();
+    if (korean) return korean;
+    const english = line.match(englishOrganizationPattern)?.[0]?.trim();
+    if (english) return english;
+  }
+  // A slogan or a noisy OCR line is not enough evidence for an organization name.
+  return "";
+}
+
+function findName(lines: string[], organization: string) {
+  const usable = lines.filter((line) =>
+    line.length <= 36 && !line.includes("@") && !phonePattern.test(line) &&
+    !koreanOrganizationPattern.test(line) && !englishOrganizationPattern.test(line) &&
+    !(organization && line.includes(organization))
+  );
+
+  // A standalone name is safer than a three-syllable fragment of a slogan.
+  for (const line of usable) {
+    if (/^[가-힣](?:\s*[가-힣]){2,3}$/.test(line)) {
+      const candidate = line.replace(/\s/g, "");
+      if (!titlePattern.test(candidate) && !departmentEnding.test(candidate)) return candidate;
+    }
+  }
+
+  // On mixed lines, require an adjacent job title before suggesting a name.
+  for (const line of usable) {
+    if (!titlePattern.test(line)) continue;
+    const personText = line.replace(titlePattern, " ");
+    for (const match of personText.matchAll(namePattern)) {
+      const candidate = match[1].replace(/\s/g, "");
+      if (!titlePattern.test(candidate) && !departmentEnding.test(candidate)) return candidate;
+    }
+  }
+  return "";
+}
+
+function findPhone(lines: string[]) {
+  const mobile = lines.map((line) => line.match(mobilePattern)?.[0]).find(Boolean);
+  if (mobile) return mobile;
+  const voiceLine = lines.find((line) => !/^(?:F(?:ax)?\.?|팩스)\s*[:.]?/i.test(line) && phonePattern.test(line));
+  return voiceLine?.match(phonePattern)?.[0] ?? "";
+}
 
 export function classifySalesCard(organization: string): SalesKind {
   if (schoolPattern.test(organization)) return "school";
@@ -14,18 +67,16 @@ export function classifySalesCard(organization: string): SalesKind {
   return "other";
 }
 
-export function guessSalesCardFields(text: string): SalesCardFields {
-  const lines = text.split(/\r?\n/).map((line) => line.replace(/\s+/g, " ").trim()).filter(Boolean);
-  const candidates = lines.filter((line) => !emailPattern.test(line) && !phonePattern.test(line) && line.length <= 100);
-  const organization = candidates.find((line) => organizationPattern.test(line)) ?? candidates.find((line) => line.length >= 5 && !titlePattern.test(line)) ?? "";
-  const personLine = candidates.find((line) => line !== organization && /^[가-힣]{2,4}(?:\s+(?:[가-힣]{2,4}|[A-Za-z.]+)){0,2}$/.test(line) && !titlePattern.test(line));
-  const titleLine = candidates.find((line) => line !== organization && titlePattern.test(line));
-  const name = personLine ?? "";
+export function guessSalesCardFields(text: string, identityText = ""): SalesCardFields {
+  const lines = linesOf(text);
+  const identityLines = linesOf(identityText);
+  const organization = findOrganization(lines) || findOrganization(identityLines);
+  const title = [...lines, ...identityLines].map((line) => line.match(titlePattern)?.[0]).find(Boolean) ?? "";
   return {
-    name,
+    name: findName(lines, organization) || findName(identityLines, organization),
     organization,
-    title: titleLine?.replace(name, "").trim() ?? "",
-    phone: text.match(phonePattern)?.[0] ?? "",
+    title,
+    phone: findPhone(lines),
     email: text.match(emailPattern)?.[0] ?? "",
   };
 }

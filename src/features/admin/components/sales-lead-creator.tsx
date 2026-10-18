@@ -18,6 +18,7 @@ export function SalesLeadCreator() {
   const [croppedFile, setCroppedFile] = useState<File | null>(null);
   const [fields, setFields] = useState<SalesCardFields>(emptyFields);
   const [kind, setKind] = useState<SalesKind>("institution");
+  const [kindTouched, setKindTouched] = useState(false);
   const [ocrText, setOcrText] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
@@ -35,6 +36,7 @@ export function SalesLeadCreator() {
     setOcrText("");
     setFields(emptyFields);
     setKind("institution");
+    setKindTouched(false);
     if (!next) { setMessage(""); return; }
     setMessage("명함 영역을 지정한 뒤 글자 인식을 눌러 주세요.");
   }
@@ -44,12 +46,14 @@ export function SalesLeadCreator() {
     setMessage("기기에서 명함 글자를 인식 중입니다…");
     try {
       const recognized = await recognizeBusinessCard(cropped);
-      const result = guessSalesCardFields(recognized.text);
+      const result = guessSalesCardFields(recognized.text, recognized.identityText);
       setCroppedFile(cropped);
       setOcrText(recognized.text);
       setFields(result);
-      setKind(classifySalesCard(result.organization));
-      setMessage(recognized.note);
+      setKind(result.organization ? classifySalesCard(result.organization) : "institution");
+      setKindTouched(false);
+      const missing = [!result.organization && "기관명", !result.name && "담당자 이름"].filter(Boolean).join("·");
+      setMessage(`${recognized.note}${missing ? ` ${missing}은 직접 확인해 주세요.` : ""}`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "글자 인식에 실패했습니다. 직접 입력한 뒤 저장할 수 있습니다.");
     } finally {
@@ -104,8 +108,8 @@ export function SalesLeadCreator() {
         {file && <BusinessCardCropper key={`${file.name}:${file.size}:${file.lastModified}`} file={file} busy={busy} onCrop={recognizeCard} />}
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
-        <label className="block text-sm font-medium sm:col-span-2">기관·학교·업체명 <span className="text-red-600">*</span><input required maxLength={200} value={fields.organization} onChange={(event) => setFields({ ...fields, organization: event.target.value })} placeholder="기관·학교·업체명" className={inputClass}/></label>
-        <label className="block text-sm font-medium">대상 유형<select value={kind} onChange={(event) => setKind(event.target.value as SalesKind)} className={inputClass}><option value="institution">기관</option><option value="school">학교</option><option value="other">기타·업체</option></select></label>
+        <label className="block text-sm font-medium sm:col-span-2">기관·학교·업체명 <span className="text-red-600">*</span><input required maxLength={200} value={fields.organization} onChange={(event) => { const organization = event.target.value; setFields({ ...fields, organization }); if (!kindTouched) setKind(organization ? classifySalesCard(organization) : "institution"); }} placeholder="기관·학교·업체명" className={inputClass}/></label>
+        <label className="block text-sm font-medium">대상 유형<select value={kind} onChange={(event) => { setKind(event.target.value as SalesKind); setKindTouched(true); }} className={inputClass}><option value="institution">기관</option><option value="school">학교</option><option value="other">기타·업체</option></select></label>
         <label className="block text-sm font-medium">담당자 이름<input maxLength={120} value={fields.name} onChange={(event) => setFields({ ...fields, name: event.target.value })} placeholder="담당자 이름" className={inputClass}/></label>
         <label className="block text-sm font-medium">직책<input maxLength={120} value={fields.title} onChange={(event) => setFields({ ...fields, title: event.target.value })} placeholder="직책" className={inputClass}/></label>
         <label className="block text-sm font-medium">전화번호<input type="tel" maxLength={80} value={fields.phone} onChange={(event) => setFields({ ...fields, phone: event.target.value })} placeholder="전화번호" className={inputClass}/></label>

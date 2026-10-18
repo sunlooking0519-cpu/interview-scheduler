@@ -13,6 +13,7 @@ function load(path, imports) {
   const exports = {};
   vm.runInNewContext(code, {
     exports, FormData, console, process, Buffer, URL, URLSearchParams, AbortSignal,
+    createImageBitmap: imports.__createImageBitmap,
     require(name) {
       if (name === "@/server/calendar-sync" && !(name in imports)) return { scheduleCalendarSync() {} };
       if (name === "@/server/resumes" && !(name in imports)) return {};
@@ -53,14 +54,39 @@ test("business card OCR suggests an organization type and extracts contact detai
   assert.equal(card.classifySalesCard("가나다상사"), "other");
 });
 
+test("business card fields ignore slogans, prefer mobile numbers, and keep uncertain names empty", () => {
+  const card = load("src/features/admin/sales-card-ocr.ts", {});
+  const fields = card.guessSalesCardFields("63) 소통·연결·창조의 새 강진.\n강진군 4차산업혁명활용추진단\nT. 061 430 5941\nM. 010 2948 7147\nE-mail: poorun@korea.kr", "정 은 지 | 디지털혁신팀장");
+  assert.equal(fields.organization, "강진군 4차산업혁명활용추진단");
+  assert.equal(fields.name, "정은지");
+  assert.equal(fields.phone, "010 2948 7147");
+  assert.equal(fields.title, "팀장");
+  assert.equal(card.classifySalesCard(fields.organization), "institution");
+
+  const noisy = card.guessSalesCardFields("> TAE JIN croup\nCRIA ERS RAE HAs aor\n010.6690.0998\nktylove0998@hanmail.net");
+  assert.equal(noisy.organization, "");
+  assert.equal(noisy.name, "");
+  assert.equal(noisy.phone, "010.6690.0998");
+  assert.equal(noisy.email, "ktylove0998@hanmail.net");
+
+  const council = card.guessSalesCardFields("69) 전남광주통합특별시의회 4 TH\n미래산업위원회 위원장 이 귀 순\n010-4484-5255");
+  assert.equal(council.organization, "전남광주통합특별시의회");
+  assert.equal(council.name, "이귀순");
+  assert.equal(council.title, "위원장");
+  assert.equal(card.classifySalesCard(council.organization), "institution");
+});
+
 test("business card recognition uses only the browser OCR worker", async () => {
   let recognized = 0;
   let terminated = 0;
   const { recognizeBusinessCard } = load("src/features/admin/recognize-business-card.ts", {
+    "@/features/admin/sales-card-ocr": { guessSalesCardFields: () => ({ name: "김민수", organization: "한빛대학교" }) },
     "tesseract.js": {
+      PSM: { SPARSE_TEXT: "11", SINGLE_BLOCK: "6" },
       async createWorker(language) {
         assert.equal(language, "kor+eng");
         return {
+          async setParameters(params) { assert.equal(params.tessedit_pageseg_mode, "11"); },
           async recognize() { recognized += 1; return { data: { text: " 한빛대학교 " } }; },
           async terminate() { terminated += 1; },
         };
@@ -71,6 +97,38 @@ test("business card recognition uses only the browser OCR worker", async () => {
   assert.equal(result.text, "한빛대학교");
   assert.equal(result.source, "local");
   assert.equal(recognized, 1);
+  assert.equal(terminated, 1);
+});
+
+test("business card recognition retries the identity area when the first pass misses it", async () => {
+  const modes = [];
+  let closed = 0;
+  let terminated = 0;
+  const { recognizeBusinessCard } = load("src/features/admin/recognize-business-card.ts", {
+    __createImageBitmap: async () => ({ width: 1200, height: 800, close() { closed += 1; } }),
+    "@/features/admin/sales-card-ocr": { guessSalesCardFields: () => ({ name: "", organization: "" }) },
+    "tesseract.js": {
+      PSM: { SPARSE_TEXT: "11", SINGLE_BLOCK: "6" },
+      async createWorker() {
+        return {
+          async setParameters(params) { modes.push(params.tessedit_pageseg_mode); },
+          async recognize(_file, options) {
+            if (options) {
+              assert.equal(options.rectangle.width, 1200);
+              assert.equal(options.rectangle.height, 600);
+              return { data: { text: "김태영\nTAEJIN GROUP" } };
+            }
+            return { data: { text: "010-1234-5678" } };
+          },
+          async terminate() { terminated += 1; },
+        };
+      },
+    },
+  });
+  const result = await recognizeBusinessCard({ type: "image/jpeg", size: 1024 });
+  assert.deepEqual(modes, ["11", "6"]);
+  assert.equal(result.identityText, "김태영\nTAEJIN GROUP");
+  assert.equal(closed, 1);
   assert.equal(terminated, 1);
 });
 

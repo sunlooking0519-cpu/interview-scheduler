@@ -42,8 +42,10 @@ export function BusinessCardUploader({ organizationId }: { organizationId: strin
       const result = await recognizeBusinessCard(cropped);
       setCroppedFile(cropped);
       setOcrText(result.text);
-      setFields(guessSalesCardFields(result.text));
-      setStatus(result.note);
+      const extracted = guessSalesCardFields(result.text, result.identityText);
+      setFields(extracted);
+      const missing = [!extracted.organization && "기관명", !extracted.name && "이름"].filter(Boolean).join("·");
+      setStatus(`${result.note}${missing ? ` ${missing}은 직접 확인해 주세요.` : ""}`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "글자 인식에 실패했습니다. 직접 입력해 주세요.");
     } finally {
