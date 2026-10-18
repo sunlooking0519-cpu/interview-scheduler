@@ -100,7 +100,7 @@ Google 캘린더 조회·예약 자동 동기화 설정은 [설정 안내](docs/
 
 영업관리 기능을 배포하기 전에 [영업관리 설정 안내](docs/sales-management-setup.md)에 따라 SQL을 실행하세요. `/admin/sales`에서 기관·담당자·미팅·제안서 버전·명함 OCR을 관리하고, 연결된 Google 캘린더에 영업 미팅을 동기화합니다.
 
-명함 Google Vision OCR 시험 설정은 [Google Vision 설정 안내](docs/google-vision-setup.md)를 참고하세요. 별도 SQL은 필요하지 않으며, 키 설정 전에는 기존 브라우저 OCR을 사용합니다.
+명함 OCR은 기본적으로 브라우저에서 Tesseract.js로 실행합니다. 사진에서 명함 영역을 지정한 뒤 인식 결과를 확인·수정할 수 있으며 Google Vision 키는 필요하지 않습니다. 명함을 등록할 때만 비공개 `sales-cards` 저장소에 사진을 보관합니다.
 
 ```sh
 pnpm test

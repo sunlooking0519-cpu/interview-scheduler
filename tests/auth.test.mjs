@@ -53,6 +53,27 @@ test("business card OCR suggests an organization type and extracts contact detai
   assert.equal(card.classifySalesCard("가나다상사"), "other");
 });
 
+test("business card recognition uses only the browser OCR worker", async () => {
+  let recognized = 0;
+  let terminated = 0;
+  const { recognizeBusinessCard } = load("src/features/admin/recognize-business-card.ts", {
+    "tesseract.js": {
+      async createWorker(language) {
+        assert.equal(language, "kor+eng");
+        return {
+          async recognize() { recognized += 1; return { data: { text: " 한빛대학교 " } }; },
+          async terminate() { terminated += 1; },
+        };
+      },
+    },
+  });
+  const result = await recognizeBusinessCard({ type: "image/jpeg", size: 1024 });
+  assert.equal(result.text, "한빛대학교");
+  assert.equal(result.source, "local");
+  assert.equal(recognized, 1);
+  assert.equal(terminated, 1);
+});
+
 test("Google Vision OCR sends a Korean document request with a server-only key", async () => {
   const previous = process.env.GOOGLE_VISION_API_KEY;
   process.env.GOOGLE_VISION_API_KEY = "test-vision-key";

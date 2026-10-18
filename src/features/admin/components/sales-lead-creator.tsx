@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
 import { createClient } from "../../../../lib/supabase/client";
 import { createSalesLead } from "@/app/admin/sales/actions";
 import { classifySalesCard, guessSalesCardFields, type SalesCardFields, type SalesKind } from "@/features/admin/sales-card-ocr";
 import { recognizeBusinessCard } from "@/features/admin/recognize-business-card";
+import { BusinessCardCropper } from "@/features/admin/components/business-card-cropper";
 
 const extensions: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" };
 const emptyFields: SalesCardFields = { name: "", organization: "", title: "", phone: "", email: "" };
@@ -15,32 +15,37 @@ const inputClass = "mt-1 w-full min-w-0 rounded-xl border border-slate-300 bg-wh
 export function SalesLeadCreator() {
   const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl] = useState("");
+  const [croppedFile, setCroppedFile] = useState<File | null>(null);
   const [fields, setFields] = useState<SalesCardFields>(emptyFields);
   const [kind, setKind] = useState<SalesKind>("institution");
   const [ocrText, setOcrText] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
 
-  useEffect(() => {
-    if (previewUrl) return () => URL.revokeObjectURL(previewUrl);
-  }, [previewUrl]);
-
-  async function selectCard(next: File | null) {
+  function selectCard(next: File | null) {
     if (busy) return;
     if (next && (!extensions[next.type] || next.size > 10 * 1024 * 1024 || next.size === 0)) {
+      setFile(null);
+      setCroppedFile(null);
       setMessage("JPG, PNG, WebP 이미지를 10MB 이하로 선택해 주세요.");
       return;
     }
     setFile(next);
-    setPreviewUrl(next ? URL.createObjectURL(next) : "");
+    setCroppedFile(null);
     setOcrText("");
+    setFields(emptyFields);
+    setKind("institution");
     if (!next) { setMessage(""); return; }
+    setMessage("명함 영역을 지정한 뒤 글자 인식을 눌러 주세요.");
+  }
+
+  async function recognizeCard(cropped: File) {
     setBusy(true);
-    setMessage("명함을 인식 중입니다. Google Vision에 연결합니다.");
+    setMessage("기기에서 명함 글자를 인식 중입니다…");
     try {
-      const recognized = await recognizeBusinessCard(next);
+      const recognized = await recognizeBusinessCard(cropped);
       const result = guessSalesCardFields(recognized.text);
+      setCroppedFile(cropped);
       setOcrText(recognized.text);
       setFields(result);
       setKind(classifySalesCard(result.organization));
@@ -67,9 +72,10 @@ export function SalesLeadCreator() {
     const supabase = createClient();
     let imagePath = "";
     try {
-      if (file) {
-        imagePath = `${organizationId}/${crypto.randomUUID()}.${extensions[file.type]}`;
-        const { error } = await supabase.storage.from("sales-cards").upload(imagePath, file, { contentType: file.type, upsert: false });
+      const imageFile = croppedFile ?? file;
+      if (imageFile) {
+        imagePath = `${organizationId}/${crypto.randomUUID()}.${extensions[imageFile.type]}`;
+        const { error } = await supabase.storage.from("sales-cards").upload(imagePath, imageFile, { contentType: imageFile.type, upsert: false });
         if (error) throw new Error("명함 업로드에 실패했습니다. sales-cards 버킷과 관리자 권한을 확인해 주세요.");
       }
       const result = await createSalesLead({
@@ -93,9 +99,9 @@ export function SalesLeadCreator() {
     <form onSubmit={(event) => void submit(event)} className="mt-4 space-y-5">
       <div className="rounded-xl border border-dashed border-indigo-300 bg-indigo-50/50 p-4">
         <label htmlFor="sales-card-photo" className="block font-semibold text-indigo-950">명함 촬영·사진 선택</label>
-        <input id="sales-card-photo" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" disabled={busy} onChange={(event) => void selectCard(event.target.files?.[0] ?? null)} className="mt-2 block w-full text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-indigo-600 file:px-3 file:py-2 file:font-semibold file:text-white" />
-        <p className="mt-2 text-xs text-slate-600">명함이 사진 대부분을 차지하도록 가까이 촬영해 주세요. JPG·PNG·WebP, 최대 10MB. 인식 시 사진은 Google Vision으로 전송되며, 등록한 명함은 관리자 전용 비공개 저장소에 보관됩니다.</p>
-        {previewUrl && <div className="relative mt-3 h-52 w-full"><Image src={previewUrl} alt="선택한 명함 미리보기" fill unoptimized className="rounded-lg border border-slate-200 object-contain" /></div>}
+        <input id="sales-card-photo" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" disabled={busy} onChange={(event) => selectCard(event.target.files?.[0] ?? null)} className="mt-2 block w-full text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-indigo-600 file:px-3 file:py-2 file:font-semibold file:text-white" />
+        <p className="mt-2 text-xs text-slate-600">명함을 밝고 선명하게 촬영해 주세요. JPG·PNG·WebP, 최대 10MB. 글자 인식은 기기에서 처리하며 OCR 서비스로 사진을 전송하지 않습니다. 등록한 명함은 관리자 전용 비공개 저장소에 보관됩니다.</p>
+        {file && <BusinessCardCropper key={`${file.name}:${file.size}:${file.lastModified}`} file={file} busy={busy} onCrop={recognizeCard} />}
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="block text-sm font-medium sm:col-span-2">기관·학교·업체명 <span className="text-red-600">*</span><input required maxLength={200} value={fields.organization} onChange={(event) => setFields({ ...fields, organization: event.target.value })} placeholder="기관·학교·업체명" className={inputClass}/></label>
