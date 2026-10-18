@@ -29,6 +29,46 @@ const bookingDates = load("src/features/booking/dates.ts", {});
 const admin = { id: "admin-id", email: "admin@example.com", app_metadata: { role: "admin" } };
 const redirect = (path) => { throw new Error(`REDIRECT:${path}`); };
 
+test("business card OCR suggests an organization type and extracts contact details", () => {
+  const card = load("src/features/admin/sales-card-ocr.ts", {});
+  const fields = card.guessSalesCardFields("한빛대학교\n김민수\n입학처 팀장\n010-1234-5678\nminsu@example.com");
+  assert.equal(fields.organization, "한빛대학교");
+  assert.equal(fields.name, "김민수");
+  assert.equal(fields.phone, "010-1234-5678");
+  assert.equal(fields.email, "minsu@example.com");
+  assert.equal(card.classifySalesCard(fields.organization), "school");
+  assert.equal(card.classifySalesCard("미래연구소"), "institution");
+  assert.equal(card.classifySalesCard("가나다상사"), "other");
+});
+
+test("new sales lead links the organization, contact and private business card", async () => {
+  const organizationId = "12345678-1234-1234-1234-123456789abc";
+  const writes = [];
+  const supabase = { schema(schema) {
+    assert.equal(schema, "scheduler");
+    return { from(table) { return { insert(row) {
+      writes.push({ table, row });
+      if (table === "sales_contacts") return { select() { return { async single() { return { data: { id: "contact-id" }, error: null }; } }; } };
+      return Promise.resolve({ error: null });
+    } }; } };
+  } };
+  const actions = load("src/app/admin/sales/actions.ts", {
+    "next/cache": { revalidatePath() {} }, "next/navigation": { redirect },
+    "@/server/calendar-sync": { scheduleCalendarSync() {} },
+    "@/server/google-calendar": { getCalendarConnection: async () => null },
+    "@/server/admin-auth": { requireAdmin: async () => ({ user: admin, supabase }) },
+  });
+  const input = {
+    organizationId, name: "한빛대학교", kind: "school",
+    contact: { name: "김민수", title: "팀장", phone: "010-1234-5678", email: "minsu@example.com" },
+    imagePath: `${organizationId}/11111111-1111-1111-1111-111111111111.jpg`, ocrText: "한빛대학교 김민수",
+  };
+  assert.equal((await actions.createSalesLead(input)).id, organizationId);
+  assert.deepEqual(writes.map(({ table }) => table), ["sales_organizations", "sales_contacts", "sales_business_cards"]);
+  assert.equal(writes[2].row.contact_id, "contact-id");
+  assert.equal(writes[2].row.image_path, input.imagePath);
+});
+
 test("resume validation enforces allowed extensions and the 5MB boundary", () => {
   const resume = load("src/features/booking/resume.ts", {});
   assert.equal(resume.resumeError("resume.PDF", 5 * 1024 * 1024), "");

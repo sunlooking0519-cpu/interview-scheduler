@@ -5,11 +5,61 @@ import { redirect } from "next/navigation";
 import { requireAdmin } from "@/server/admin-auth";
 import { scheduleCalendarSync, syncCalendarQueue } from "@/server/calendar-sync";
 import { getCalendarConnection } from "@/server/google-calendar";
+import type { SalesCardFields, SalesKind } from "@/features/admin/sales-card-ocr";
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const field = (data: FormData, key: string, max = 2000) => String(data.get(key) ?? "").trim().slice(0, max);
 const validId = (id: string) => { if (!uuidPattern.test(id)) throw new Error("잘못된 주소입니다."); return id; };
 const salesPath = (id: string) => `/admin/sales/${id}`;
+
+export async function createSalesLead(input: {
+  organizationId: string;
+  name: string;
+  kind: SalesKind;
+  contact: Omit<SalesCardFields, "organization">;
+  imagePath: string;
+  ocrText: string;
+}) {
+  const { user, supabase } = await requireAdmin();
+  const organizationId = input.organizationId;
+  const name = input.name.trim();
+  const contactInput = input.contact ?? { name: "", title: "", phone: "", email: "" };
+  const contact = Object.fromEntries(
+    (["name", "title", "phone", "email"] as const).map((key) => [key, String(contactInput[key] ?? "").trim()]),
+  ) as Omit<SalesCardFields, "organization">;
+  const validPath = !input.imagePath || new RegExp(`^${organizationId}/[0-9a-f-]{36}\\.(jpg|png|webp)$`, "i").test(input.imagePath);
+  if (!uuidPattern.test(organizationId) || !name || name.length > 200 || !["institution", "school", "other"].includes(input.kind)
+    || contact.name.length > 120 || contact.title.length > 120 || contact.phone.length > 80 || contact.email.length > 200
+    || ((contact.title || contact.phone || contact.email) && !contact.name) || !validPath || input.ocrText.length > 20000) {
+    return { id: "", error: "기관명, 담당자 정보와 명함 파일을 확인해 주세요." };
+  }
+  const db = supabase.schema("scheduler");
+  const { error: organizationError } = await db.from("sales_organizations").insert({ id: organizationId, name, kind: input.kind, created_by: user.id });
+  if (organizationError) return { id: "", error: "영업 대상을 저장하지 못했습니다. 잠시 후 다시 시도해 주세요." };
+
+  let contactId: string | null = null;
+  if (contact.name) {
+    const { data, error } = await db.from("sales_contacts").insert({ organization_id: organizationId, ...contact }).select("id").single();
+    if (error || !data) {
+      await db.from("sales_organizations").delete().eq("id", organizationId);
+      return { id: "", error: "담당자 저장에 실패했습니다. 다시 시도해 주세요." };
+    }
+    contactId = data.id;
+  }
+  if (input.imagePath) {
+    const { error } = await db.from("sales_business_cards").insert({
+      organization_id: organizationId, contact_id: contactId, image_path: input.imagePath,
+      ocr_text: input.ocrText, ocr_fields: { ...contact, organization: name },
+    });
+    if (error) {
+      await db.from("sales_organizations").delete().eq("id", organizationId);
+      return { id: "", error: "명함 저장에 실패했습니다. 다시 시도해 주세요." };
+    }
+  }
+  revalidatePath("/admin/sales");
+  revalidatePath(salesPath(organizationId));
+  return { id: organizationId, error: "" };
+}
 
 export async function createOrganization(data: FormData) {
   const { user, supabase } = await requireAdmin();
