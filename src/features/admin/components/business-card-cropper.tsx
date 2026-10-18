@@ -100,6 +100,17 @@ export function BusinessCardCropper({ file, busy, canRefine, onCrop }: {
     if (drag.mode === "create") setSelection((current) => current && current.width >= MIN_SELECTION && current.height >= MIN_SELECTION ? current : drag.initial);
   }
 
+  function toggleSelectionMode() {
+    if (selectionMode) {
+      setSelectionMode(false);
+      return;
+    }
+    // A new selection session should start with a blank image; keep the previous box only while editing it.
+    dragRef.current = null;
+    setSelection(null);
+    setSelectionMode(true);
+  }
+
   async function cropAndRecognize(field?: CardField) {
     const image = imageRef.current;
     if (!image?.naturalWidth || !image.naturalHeight) {
@@ -137,7 +148,7 @@ export function BusinessCardCropper({ file, busy, canRefine, onCrop }: {
     <p className="text-sm text-slate-700">사진이 보이면 바로 글자 인식을 누르세요. 배경을 제외하려면 영역을 드래그해 선택하고, 선택한 박스의 위치와 크기를 조정할 수 있습니다.</p>
     <div className="flex flex-wrap gap-2">
       <button type="button" onClick={() => void cropAndRecognize()} disabled={busy || cropping || !imageLoaded} className="min-h-12 flex-1 rounded-lg bg-indigo-600 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50">{busy || cropping ? "인식 중…" : "이 사진 글자 인식"}</button>
-      <button type="button" onClick={() => setSelectionMode((current) => !current)} disabled={busy || cropping || !imageLoaded} aria-pressed={selectionMode} className="min-h-12 rounded-lg border border-indigo-300 bg-white px-4 py-3 text-sm font-semibold text-indigo-700 disabled:opacity-50">{selectionMode ? "영역 선택 종료" : "영역 선택"}</button>
+      <button type="button" onClick={toggleSelectionMode} disabled={busy || cropping || !imageLoaded} aria-pressed={selectionMode} className="min-h-12 rounded-lg border border-indigo-300 bg-white px-4 py-3 text-sm font-semibold text-indigo-700 disabled:opacity-50">{selectionMode ? "영역 선택 종료" : "영역 선택"}</button>
     </div>
     {selectionMode && <p className="text-xs text-indigo-700">사진을 드래그해 영역을 만드세요. 박스 안을 드래그하면 이동하고, 흰색 조절점을 드래그하면 크기를 바꿀 수 있습니다.</p>}
     <div className="overflow-auto rounded-lg border border-slate-200 bg-slate-100 p-2 text-center">
