@@ -2,7 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
 import { NextResponse, type NextRequest } from "next/server";
 import { requireAdmin } from "@/server/admin-auth";
-import { CALENDAR_SCOPE, calendarConfig, encryptToken, getCalendarConnection, googleToken } from "@/server/google-calendar";
+import { CALENDAR_SCOPE, CALENDAR_LIST_SCOPE, calendarConfig, encryptToken, getCalendarConnection, googleToken } from "@/server/google-calendar";
 import { createServiceClient } from "../../../../../lib/supabase/service";
 import { scheduleCalendarSync } from "@/server/calendar-sync";
 
@@ -22,7 +22,8 @@ export async function GET(request: NextRequest) {
     const connection = await getCalendarConnection();
     if (connection && connection.owner_id !== user.id) return fail();
     const tokens = await googleToken({ code, grant_type: "authorization_code", redirect_uri: config.redirectUri });
-    if (!tokens.refresh_token || !tokens.scope?.split(" ").includes(CALENDAR_SCOPE)) return fail();
+    const granted = tokens.scope?.split(" ") ?? [];
+    if (!tokens.refresh_token || !granted.includes(CALENDAR_SCOPE) || !granted.includes(CALENDAR_LIST_SCOPE)) return fail();
     const db = createServiceClient().schema("scheduler");
     const row = { id: true, owner_id: user.id, calendar_id: "primary", refresh_token: encryptToken(tokens.refresh_token) };
     const { error } = connection

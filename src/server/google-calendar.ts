@@ -3,8 +3,10 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:
 import { createServiceClient } from "../../lib/supabase/service";
 
 export const CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar.events";
+export const CALENDAR_LIST_SCOPE = "https://www.googleapis.com/auth/calendar.calendarlist.readonly";
 export type CalendarConnection = { owner_id: string; refresh_token: string; calendar_id: string };
 export type GoogleEvent = { id: string; summary?: string; htmlLink?: string; start?: { date?: string; dateTime?: string }; end?: { date?: string; dateTime?: string }; extendedProperties?: { private?: Record<string, string> } };
+export type GoogleCalendarEntry = { id: string; summary: string; primary?: boolean; deleted?: boolean; accessRole?: string };
 
 export function calendarConfig() {
   const clientId = process.env.GOOGLE_CLIENT_ID;
@@ -60,7 +62,20 @@ export async function googleRequest(token: string, calendarId: string, path: str
   });
 }
 
+export async function googleCalendarListRequest(token: string, pageToken = "") {
+  const query = new URLSearchParams({ maxResults: "250" });
+  if (pageToken) query.set("pageToken", pageToken);
+  return fetch(`https://www.googleapis.com/calendar/v3/users/me/calendarList?${query}`, {
+    headers: { Authorization: `Bearer ${token}` }, cache: "no-store", signal: AbortSignal.timeout(10000),
+  });
+}
+
 export function googleEventId(id: string) {
   const namespace = createHash("sha256").update(process.env.NEXT_PUBLIC_SUPABASE_URL ?? "").digest("hex").slice(0, 16);
   return `meet${namespace}${id}`;
+}
+
+export function salesEventId(id: string) {
+  const namespace = createHash("sha256").update(process.env.NEXT_PUBLIC_SUPABASE_URL ?? "").digest("hex").slice(0, 16);
+  return `sales${namespace}${id.replaceAll("-", "")}`;
 }

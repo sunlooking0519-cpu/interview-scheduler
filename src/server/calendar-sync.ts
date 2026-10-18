@@ -1,7 +1,7 @@
 import "server-only";
 import { after } from "next/server";
 import { createServiceClient } from "../../lib/supabase/service";
-import { getCalendarConnection, calendarAccessToken, googleEventId, googleRequest } from "@/server/google-calendar";
+import { getCalendarConnection, calendarAccessToken, googleEventId, googleRequest, salesEventId } from "@/server/google-calendar";
 
 export function scheduleCalendarSync() {
   if (!(process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY) || !process.env.GOOGLE_CLIENT_ID) return;
@@ -53,6 +53,55 @@ export async function syncCalendarQueue() {
     } catch {
       failed++;
       await db.from("google_calendar_jobs").update({ last_error: "동기화 실패. Google 연결 상태를 확인하고 재시도해 주세요." }).eq("reservation_id", job.reservation_id).eq("version", job.version);
+    }
+  }
+  const sales = await syncSalesCalendarJobs(token, connection.calendar_id, started);
+  return { processed: processed + sales.processed, failed: failed + sales.failed };
+}
+
+async function syncSalesCalendarJobs(token: string, calendarId: string, started: number) {
+  const db = createServiceClient().schema("scheduler");
+  let processed = 0;
+  let failed = 0;
+  for (let attempt = 0; attempt < 15; attempt++) {
+    if (Date.now() - started > 45000) break;
+    const { data: jobs, error } = await db.rpc("claim_sales_calendar_jobs");
+    // The older deployment can still sync interviews before the sales migration is applied.
+    if (error) {
+      if (error.code === "PGRST202" || error.code === "42883") break;
+      throw new Error("Sales calendar queue unavailable");
+    }
+    const job = (jobs ?? [])[0] as { meeting_id: string; version: number } | undefined;
+    if (!job) break;
+    try {
+      const { data: meeting, error: readError } = await db.from("sales_meetings").select("title,starts_at,ends_at,location,status,organization_id").eq("id", job.meeting_id).maybeSingle();
+      if (readError) throw new Error("Meeting unavailable");
+      const eventId = salesEventId(job.meeting_id);
+      let response: Response;
+      if (!meeting || meeting.status === "cancelled") {
+        response = await googleRequest(token, calendarId, `events/${eventId}`, { method: "DELETE" });
+        if (!response.ok && ![404, 410].includes(response.status)) throw new Error("Google meeting cancellation failed");
+      } else {
+        const { data: organization } = await db.from("sales_organizations").select("name").eq("id", meeting.organization_id).maybeSingle();
+        const event = {
+          summary: `영업 미팅 · ${organization?.name ?? meeting.title}`,
+          description: `Meetly 영업 미팅: ${meeting.title}. 변경과 취소는 Meetly 영업 관리에서 진행해 주세요.`,
+          location: meeting.location ?? "",
+          start: { dateTime: meeting.starts_at, timeZone: "Asia/Seoul" },
+          end: { dateTime: meeting.ends_at, timeZone: "Asia/Seoul" },
+          extendedProperties: { private: { meetlySales: "true", salesMeetingId: job.meeting_id } },
+        };
+        response = await googleRequest(token, calendarId, `events/${eventId}`, { method: "PUT", body: JSON.stringify(event) });
+        if (response.status === 404) response = await googleRequest(token, calendarId, "events", { method: "POST", body: JSON.stringify({ id: eventId, ...event }) });
+        if (response.status === 409) response = await googleRequest(token, calendarId, `events/${eventId}`, { method: "PUT", body: JSON.stringify(event) });
+        if (!response.ok) throw new Error("Google meeting sync failed");
+      }
+      const { error: deleteError } = await db.from("sales_calendar_jobs").delete().eq("meeting_id", job.meeting_id).eq("version", job.version);
+      if (deleteError) throw new Error("Sales queue acknowledgement failed");
+      processed++;
+    } catch {
+      failed++;
+      await db.from("sales_calendar_jobs").update({ last_error: "Google 미팅 동기화 실패. 연결 상태를 확인하고 재시도해 주세요." }).eq("meeting_id", job.meeting_id).eq("version", job.version);
     }
   }
   return { processed, failed };

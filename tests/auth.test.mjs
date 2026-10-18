@@ -104,9 +104,70 @@ test("Google tokens are authenticated ciphertext and event IDs are stable", () =
     assert.match(calendar.googleEventId("9223372036854775807"), /^[0-9a-v]{5,1024}$/);
     assert.equal(calendar.googleEventId("2"), calendar.googleEventId("2"));
     assert.notEqual(calendar.googleEventId("2"), calendar.googleEventId("3"));
+    assert.match(calendar.salesEventId("12345678-1234-1234-1234-123456789abc"), /^[0-9a-v]{5,1024}$/);
+    assert.notEqual(calendar.salesEventId("12345678-1234-1234-1234-123456789abc"), calendar.googleEventId("2"));
   } finally {
     for (const [key, value] of Object.entries(previous)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; }
   }
+});
+
+test("sales meeting sync creates a Google event and removes it after cancellation", async () => {
+  for (const status of ["scheduled", "cancelled"]) {
+    const requests = [], deleted = [];
+    let claimed = false;
+    const db = {
+      rpc: async (name) => name === "claim_google_calendar_jobs" ? { data: [] } : { data: claimed ? [] : [{ meeting_id: "meeting-id", version: 3 }] },
+      from(table) {
+        if (table === "sales_meetings") return { select() { return { eq() { return { maybeSingle: async () => ({ data: { title: "상담", starts_at: "2026-10-26T01:00:00Z", ends_at: "2026-10-26T02:00:00Z", location: "서울", status, organization_id: "org-id" } }) }; } }; } };
+        if (table === "sales_organizations") return { select() { return { eq() { return { maybeSingle: async () => ({ data: { name: "학교" } }) }; } }; } };
+        return { delete() { return { eq(key, value) { deleted.push([key, value]); return { eq: async (otherKey, otherValue) => { deleted.push([otherKey, otherValue]); return {}; } }; } }; } };
+      },
+    };
+    const sync = load("src/server/calendar-sync.ts", {
+      "server-only": {}, "next/server": {}, "../../lib/supabase/service": { createServiceClient: () => ({ schema: () => db }) },
+      "@/server/google-calendar": {
+        getCalendarConnection: async () => ({ calendar_id: "primary" }), calendarAccessToken: async () => "token", salesEventId: () => "sales-event-id",
+        googleRequest: async (_token, _calendar, path, init) => { requests.push({ path, ...init }); return { ok: init.method !== "PUT", status: init.method === "PUT" ? 404 : 200 }; },
+      },
+    });
+    const originalRpc = db.rpc;
+    db.rpc = async (name) => { if (name === "claim_sales_calendar_jobs") { const result = await originalRpc(name); claimed = true; return result; } return originalRpc(name); };
+    const result = await sync.syncCalendarQueue();
+    assert.equal(result.processed, 1);
+    assert.deepEqual(deleted, [["meeting_id", "meeting-id"], ["version", 3]]);
+    assert.deepEqual(requests.map((request) => request.method), status === "cancelled" ? ["DELETE"] : ["PUT", "POST"]);
+    if (status === "scheduled") assert.equal(JSON.parse(requests.at(-1).body).summary, "영업 미팅 · 학교");
+  }
+});
+
+test("proposal save uses the expected revision and reports concurrent edits", async () => {
+  const compared = [];
+  let conflict = false;
+  const query = {
+    eq(key, value) { compared.push([key, value]); return this; },
+    select() { return this; },
+    async maybeSingle() { return { data: conflict ? null : { revision_number: 4, organization_id: "org-id" } }; },
+  };
+  const supabase = { schema(name) {
+    assert.equal(name, "scheduler");
+    return { from(table) {
+      assert.equal(table, "sales_proposals");
+      return { update(row) { assert.equal(row.revision_number, 4); return query; } };
+    } };
+  } };
+  const actions = load("src/app/admin/sales/actions.ts", {
+    "next/cache": { revalidatePath() {} }, "next/navigation": { redirect },
+    "@/server/calendar-sync": { scheduleCalendarSync() {} },
+    "@/server/google-calendar": { getCalendarConnection: async () => null },
+    "@/server/admin-auth": { requireAdmin: async () => ({ supabase }) },
+  });
+  const proposalId = "12345678-1234-1234-1234-123456789abc";
+  const saved = await actions.saveProposal(proposalId, 3, "제안", "내용");
+  assert.equal(saved.error, "");
+  assert.equal(saved.revision, 4);
+  assert.deepEqual(compared, [["id", proposalId], ["revision_number", 3]]);
+  conflict = true;
+  assert.match((await actions.saveProposal(proposalId, 3, "제안", "수정")).error, /다른 곳에서 수정/);
 });
 
 test("Google sync creates, updates, cancels and preserves failed or newer queue jobs", async () => {
@@ -169,6 +230,43 @@ test("Google calendar actions verify administrator access before private reads",
   await assert.rejects(() => actions.getGoogleCalendarMonth("2026-10"), /DENIED/);
   await assert.rejects(() => actions.retryCalendarSync(), /DENIED/);
   await assert.rejects(() => actions.disconnectGoogleCalendar(), /DENIED/);
+});
+
+test("admin November calendar reads events from primary and another Google calendar", async () => {
+  const queried = [];
+  const actions = load("src/app/admin/calendar-actions.ts", {
+    "@/server/admin-auth": { requireAdmin: async () => ({ user: admin }) },
+    "@/server/google-calendar": {
+      calendarConfig() {}, getCalendarConnection: async () => ({ owner_id: admin.id, calendar_id: "primary" }),
+      calendarAccessToken: async () => "token", googleCalendarListRequest: async () => ({ ok: true, status: 200, json: async () => ({ items: [{ id: "primary@example.com", summary: "기본", primary: true }, { id: "samsung@example.com", summary: "삼성 일정" }] }) }),
+      googleRequest: async (_token, calendarId) => { queried.push(calendarId); return { ok: true, json: async () => ({ items: calendarId === "samsung@example.com" ? [{ id: "shared-id", summary: "11월 미팅", start: { dateTime: "2026-11-04T10:00:00+09:00" }, end: { dateTime: "2026-11-04T11:00:00+09:00" } }] : [] }) }; },
+    },
+    "../../../lib/supabase/service": { createServiceClient: () => ({ schema: () => ({ from: () => ({ select: async () => ({ count: 0 }) }) }) }) },
+    "@/server/calendar-sync": { syncCalendarQueue() {} }, "next/cache": { revalidatePath() {} },
+  });
+  const result = await actions.getGoogleCalendarMonth("2026-11");
+  assert.equal(result.account, "primary@example.com");
+  assert.equal(result.calendars.length, 2);
+  assert.equal(result.events.length, 1);
+  assert.equal(result.events[0].start, "2026-11-04T10:00");
+  assert.equal(result.events[0].calendar, "삼성 일정");
+  assert.deepEqual(queried.sort(), ["primary@example.com", "samsung@example.com"].sort());
+});
+
+test("old Google authorization keeps primary events and requests reconnection", async () => {
+  const actions = load("src/app/admin/calendar-actions.ts", {
+    "@/server/admin-auth": { requireAdmin: async () => ({ user: admin }) },
+    "@/server/google-calendar": {
+      calendarConfig() {}, getCalendarConnection: async () => ({ owner_id: admin.id, calendar_id: "primary" }),
+      calendarAccessToken: async () => "token", googleCalendarListRequest: async () => ({ ok: false, status: 403 }),
+      googleRequest: async () => ({ ok: true, json: async () => ({ items: [{ id: "old", summary: "기존 일정", start: { date: "2026-11-05" }, end: { date: "2026-11-06" } }] }) }),
+    },
+    "../../../lib/supabase/service": { createServiceClient: () => ({ schema: () => ({ from: () => ({ select: async () => ({ count: 0 }) }) }) }) },
+    "@/server/calendar-sync": { syncCalendarQueue() {} }, "next/cache": { revalidatePath() {} },
+  });
+  const result = await actions.getGoogleCalendarMonth("2026-11");
+  assert.equal(result.events.length, 1);
+  assert.match(result.error, /Google 다시 연결/);
 });
 
 test("candidate cancellation scopes RPC to id, name and phone", async () => {

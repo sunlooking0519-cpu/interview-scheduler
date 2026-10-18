@@ -98,6 +98,8 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-or-publishable-key
 
 Google 캘린더 조회·예약 자동 동기화 설정은 [설정 안내](docs/google-calendar-setup.md)를 참고하세요. SQL 적용, Google OAuth 설정 및 Vercel 서버 환경 변수 설정 후 관리자에서 계정을 연결합니다.
 
+영업관리 기능을 배포하기 전에 [영업관리 설정 안내](docs/sales-management-setup.md)에 따라 SQL을 실행하세요. `/admin/sales`에서 기관·담당자·미팅·제안서 버전·명함 OCR을 관리하고, 연결된 Google 캘린더에 영업 미팅을 동기화합니다.
+
 ```sh
 pnpm test
 pnpm typecheck

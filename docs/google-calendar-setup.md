@@ -1,6 +1,6 @@
 # Google 캘린더 설정
 
-관리자의 기본 Google 캘린더(`primary`)를 연결합니다. 기존 Google 일정과 Supabase 예약을 관리자 월간 달력에서 함께 조회하고, 앱에서 예약을 생성·변경·취소하면 Google 면접 이벤트가 자동 갱신됩니다. Google에서 직접 바꾼 면접 이벤트를 Supabase로 가져오는 역방향 동기화는 지원하지 않습니다. 예약 관리와 취소는 앱에서 진행하세요. 다른 보조 캘린더는 현재 조회하지 않습니다.
+관리자의 기본 Google 캘린더(`primary`)에 앱 예약을 기록합니다. 관리자 월간 달력은 같은 Google 계정의 캘린더 목록을 읽어 기존 일정과 Supabase 예약을 함께 보여 줍니다. 앱에서 예약을 생성·변경·취소하면 Google 면접 이벤트가 자동 갱신됩니다. Google에서 직접 바꾼 면접 이벤트를 Supabase로 가져오는 역방향 동기화는 지원하지 않습니다. 예약 관리와 취소는 앱에서 진행하세요.
 
 ## 1. Supabase SQL
 
@@ -25,7 +25,7 @@ select * from scheduler.get_interview_dates();
    `https://interview-scheduler26.vercel.app/admin/google/callback`
 
    로컬 테스트에는 `http://localhost:3000/admin/google/callback`을 추가합니다.
-5. 권한은 `https://www.googleapis.com/auth/calendar.events`를 사용합니다. 연결 화면에서 이벤트 조회·수정 권한에 동의해야 합니다.
+5. 권한은 `https://www.googleapis.com/auth/calendar.events`와 `https://www.googleapis.com/auth/calendar.calendarlist.readonly`를 사용합니다. 연결 화면에서 일정 조회·수정과 캘린더 목록 조회 권한에 동의해야 합니다. 기존에 `calendar.events` 하나만 동의했다면 관리자 화면에서 **Google 다시 연결**을 눌러 새 권한을 허용하세요.
 
 Google OAuth의 외부 앱 Testing 상태에서는 이 권한의 refresh token이 7일 후 만료될 수 있습니다. 계속 운영할 때는 Google의 게시 상태/검증 요구사항을 확인하세요. 만료되면 관리자에서 “Google 다시 연결”을 누릅니다.
 
@@ -67,6 +67,8 @@ Authorization: Bearer <CALENDAR_SYNC_SECRET>
 DB 직접 변경도 큐에 기록되지만 앱의 즉시 실행 요청은 발생하지 않습니다. 이런 작업도 정기 재시도 또는 관리자 “동기화 재시도”로 반영합니다. [Vercel Cron 제한](https://vercel.com/docs/cron-jobs/usage-and-pricing).
 
 Google 연결 해제 시 이미 만들어진 이벤트는 유지됩니다. Google 기존 일정은 참고로 표시되며 예약 시간을 자동으로 열거나 닫지 않습니다. 앱에서 직접 연 시간만 예약 가능합니다.
+
+휴대폰에서 만든 일정이 관리자 달력에 없다면, 먼저 달력의 월을 맞추고 **일정 새로고침**을 누르세요. 관리자 화면의 **연결된 Google 계정**과 **조회 중인 캘린더** 목록을 휴대폰 Google 캘린더 앱의 해당 일정 상세 화면에 표시된 계정·저장 캘린더와 비교합니다. **예약→Google 재시도**는 앱 예약을 Google로 보내는 큐만 처리하며 휴대폰 일정 조회에는 영향을 주지 않습니다. 목록에 없는 다른 계정·삼성 전용 캘린더에 저장된 일정은 Google 캘린더 앱에 표시되더라도 이 연결로 읽을 수 없습니다. 해당 일정을 연결된 Google 계정의 캘린더로 저장하거나 옮기세요.
 
 ## 5. 실제 계정 검증
 
