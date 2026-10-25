@@ -1,17 +1,19 @@
 package kr.wiseedu.cardocrtest;
 
-import android.content.ClipData;
-import android.content.ClipboardManager;
-import android.content.Context;
+import android.app.AlertDialog;
 import android.content.Intent;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.SystemClock;
 import android.widget.Button;
+import android.widget.ArrayAdapter;
 import android.widget.EditText;
 import android.widget.ImageView;
+import android.widget.LinearLayout;
+import android.widget.Spinner;
 import android.widget.TextView;
-import android.widget.Toast;
 
 import androidx.activity.ComponentActivity;
 import androidx.activity.result.ActivityResultLauncher;
@@ -31,6 +33,7 @@ import com.google.mlkit.vision.text.korean.KoreanTextRecognizerOptions;
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public final class MainActivity extends ComponentActivity {
@@ -57,7 +60,9 @@ public final class MainActivity extends ComponentActivity {
     private EditText phoneInput;
     private EditText mobileInput;
     private EditText emailInput;
-    private boolean hasResult;
+    private Uri scannedImage;
+    private MobileApi mobileApi;
+    private boolean busy;
     private UpdateManager updateManager;
 
     @Override
@@ -76,10 +81,14 @@ public final class MainActivity extends ComponentActivity {
         phoneInput = findViewById(R.id.phoneInput);
         mobileInput = findViewById(R.id.mobileInput);
         emailInput = findViewById(R.id.emailInput);
+        mobileApi = new MobileApi(this);
 
         findViewById(R.id.scanButton).setOnClickListener(view -> startScan());
-        findViewById(R.id.copyButton).setOnClickListener(view -> copyResult());
-        findViewById(R.id.shareButton).setOnClickListener(view -> shareResult());
+        findViewById(R.id.loginButton).setOnClickListener(view -> login());
+        findViewById(R.id.saveButton).setOnClickListener(view -> saveCard());
+        findViewById(R.id.webListButton).setOnClickListener(view -> startActivity(
+            new Intent(Intent.ACTION_VIEW, Uri.parse(MobileApi.SITE + "/admin/sales/cards"))));
+        findViewById(R.id.retryRegionButton).setOnClickListener(view -> retryRegion());
         setButtonsEnabled(true);
         updateManager = new UpdateManager(this, findViewById(R.id.updateStatusText));
         findViewById(R.id.checkUpdateButton).setOnClickListener(view -> updateManager.check());
@@ -121,6 +130,7 @@ public final class MainActivity extends ComponentActivity {
             return;
         }
         Uri imageUri = result.getPages().get(0).getImageUri();
+        scannedImage = imageUri;
         preview.setImageURI(imageUri);
         recognize(imageUri);
     }
@@ -162,7 +172,6 @@ public final class MainActivity extends ComponentActivity {
         String merged = CardFieldParser.mergeUniqueLines(results[0], results[1]);
         mergedText.setText(merged.isEmpty() ? getString(R.string.no_result) : merged);
         applyFields(CardFieldParser.parse(merged));
-        hasResult = !merged.isEmpty();
         long elapsed = SystemClock.elapsedRealtime() - startedAt;
         if (merged.isEmpty()) {
             status.setText(R.string.status_no_text);
@@ -183,42 +192,129 @@ public final class MainActivity extends ComponentActivity {
         emailInput.setText(fields.email);
     }
 
-    private String resultText() {
-        return "기관: " + organizationInput.getText() + "\n"
-            + "이름: " + nameInput.getText() + "\n"
-            + "직책: " + titleInput.getText() + "\n"
-            + "전화: " + phoneInput.getText() + "\n"
-            + "휴대폰: " + mobileInput.getText() + "\n"
-            + "이메일: " + emailInput.getText() + "\n\n"
-            + "[통합 OCR]\n" + mergedText.getText() + "\n\n"
-            + "[한국어 모델]\n" + koreanText.getText() + "\n\n"
-            + "[영문 모델]\n" + latinText.getText();
+    private void login() {
+        String email = ((EditText) findViewById(R.id.loginEmailInput)).getText().toString().trim();
+        String password = ((EditText) findViewById(R.id.loginPasswordInput)).getText().toString();
+        if (email.isEmpty() || password.isEmpty()) { status.setText(R.string.login_required); return; }
+        busy = true;
+        setButtonsEnabled(false);
+        status.setText(R.string.login_working);
+        mobileApi.login(email, password, error -> {
+            busy = false;
+            ((EditText) findViewById(R.id.loginPasswordInput)).setText("");
+            status.setText(error.isEmpty() ? getString(R.string.login_complete) : error);
+            setButtonsEnabled(true);
+        });
     }
 
-    private void copyResult() {
-        ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
-        clipboard.setPrimaryClip(ClipData.newPlainText(getString(R.string.clipboard_label), resultText()));
-        Toast.makeText(this, R.string.copied_message, Toast.LENGTH_SHORT).show();
+    private void saveCard() {
+        if (scannedImage == null) { status.setText(R.string.save_image_required); return; }
+        if (!mobileApi.isLoggedIn()) { status.setText(R.string.login_required); return; }
+        String organization = organizationInput.getText().toString().trim();
+        String name = nameInput.getText().toString().trim();
+        if (organization.isEmpty() || name.isEmpty()) { status.setText(R.string.save_fields_required); return; }
+        String[] kinds = { "institution", "school", "other" };
+        int kindIndex = ((Spinner) findViewById(R.id.kindInput)).getSelectedItemPosition();
+        busy = true;
+        setButtonsEnabled(false);
+        status.setText(R.string.save_working);
+        mobileApi.save(scannedImage, organization, kinds[kindIndex], name, titleInput.getText().toString().trim(),
+            phoneInput.getText().toString().trim(), mobileInput.getText().toString().trim(),
+            emailInput.getText().toString().trim(), mergedText.getText().toString(), error -> {
+                busy = false;
+                status.setText(error.isEmpty() ? getString(R.string.save_complete) : error);
+                if (error.isEmpty()) scannedImage = null;
+                setButtonsEnabled(true);
+            });
     }
 
-    private void shareResult() {
-        Intent intent = new Intent(Intent.ACTION_SEND);
-        intent.setType("text/plain");
-        intent.putExtra(Intent.EXTRA_SUBJECT, getString(R.string.share_subject));
-        intent.putExtra(Intent.EXTRA_TEXT, resultText());
-        startActivity(Intent.createChooser(intent, getString(R.string.share_chooser)));
+    private void retryRegion() {
+        if (scannedImage == null) { status.setText(R.string.save_image_required); return; }
+        BitmapFactory.Options bounds = new BitmapFactory.Options();
+        bounds.inJustDecodeBounds = true;
+        try (InputStream source = getContentResolver().openInputStream(scannedImage)) {
+            BitmapFactory.decodeStream(source, null, bounds);
+        } catch (IOException error) { status.setText(R.string.status_image_error); return; }
+        BitmapFactory.Options options = new BitmapFactory.Options();
+        options.inSampleSize = 1;
+        while (Math.max(bounds.outWidth / options.inSampleSize, bounds.outHeight / options.inSampleSize) > 2000) options.inSampleSize *= 2;
+        final Bitmap bitmap;
+        try (InputStream source = getContentResolver().openInputStream(scannedImage)) {
+            bitmap = BitmapFactory.decodeStream(source, null, options);
+        } catch (IOException error) { status.setText(R.string.status_image_error); return; }
+        if (bitmap == null) { status.setText(R.string.status_image_error); return; }
+
+        String[] labels = {"기관", "이름", "직책", "전화", "휴대폰", "이메일"};
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(16, 8, 16, 0);
+        Spinner target = new Spinner(this);
+        target.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, labels));
+        content.addView(target);
+        TextView help = new TextView(this);
+        help.setText(R.string.retry_region_help);
+        content.addView(help);
+        CropSelectionView selection = new CropSelectionView(this);
+        selection.setBitmap(bitmap);
+        content.addView(selection, new LinearLayout.LayoutParams(-1, Math.round(getResources().getDisplayMetrics().density * 420)));
+        AlertDialog dialog = new AlertDialog.Builder(this).setTitle(R.string.retry_region_title).setView(content)
+            .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton(R.string.retry_region_apply, null).create();
+        dialog.setOnShowListener(ignored -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(view -> {
+            Bitmap crop = selection.crop();
+            if (crop == null) { status.setText(R.string.retry_region_empty); return; }
+            int fieldIndex = target.getSelectedItemPosition();
+            dialog.dismiss();
+            recognizeRegion(crop, fieldIndex);
+        }));
+        dialog.show();
+    }
+
+    private void recognizeRegion(Bitmap crop, int fieldIndex) {
+        status.setText(R.string.status_recognizing);
+        String[] result = {"", ""};
+        AtomicInteger remaining = new AtomicInteger(2);
+        InputImage image = InputImage.fromBitmap(crop, 0);
+        koreanRecognizer.process(image).addOnCompleteListener(task -> {
+            if (task.isSuccessful() && task.getResult() != null) result[0] = task.getResult().getText().trim();
+            if (remaining.decrementAndGet() == 0) showRegionResult(result, fieldIndex);
+        });
+        latinRecognizer.process(image).addOnCompleteListener(task -> {
+            if (task.isSuccessful() && task.getResult() != null) result[1] = task.getResult().getText().trim();
+            if (remaining.decrementAndGet() == 0) showRegionResult(result, fieldIndex);
+        });
+    }
+
+    private void showRegionResult(String[] result, int fieldIndex) {
+        String raw = CardFieldParser.mergeUniqueLines(result[0], result[1]);
+        CardFieldParser.Fields parsed = CardFieldParser.parse(raw);
+        String[] candidates = { parsed.organization, parsed.name, parsed.title, parsed.phone, parsed.mobile, parsed.email };
+        String candidate = candidates[fieldIndex];
+        if (candidate.isEmpty()) candidate = raw.replace('\n', ' ').trim();
+        EditText value = new EditText(this);
+        value.setSingleLine(false);
+        value.setText(candidate);
+        EditText[] fields = { organizationInput, nameInput, titleInput, phoneInput, mobileInput, emailInput };
+        new AlertDialog.Builder(this).setTitle(R.string.retry_region_result)
+            .setMessage(raw.isEmpty() ? getString(R.string.retry_region_no_text) : raw)
+            .setView(value).setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton(android.R.string.ok, (dialog, which) -> fields[fieldIndex].setText(value.getText().toString().trim()))
+            .show();
+        status.setText(R.string.retry_region_result);
     }
 
     private void setButtonsEnabled(boolean enabled) {
         Button scanButton = findViewById(R.id.scanButton);
-        scanButton.setEnabled(enabled);
-        findViewById(R.id.copyButton).setEnabled(enabled && hasResult);
-        findViewById(R.id.shareButton).setEnabled(enabled && hasResult);
+        scanButton.setEnabled(enabled && !busy);
+        findViewById(R.id.loginButton).setEnabled(enabled && !busy);
+        findViewById(R.id.saveButton).setEnabled(enabled && !busy && scannedImage != null);
+        findViewById(R.id.retryRegionButton).setEnabled(enabled && !busy && scannedImage != null);
     }
 
     @Override
     protected void onDestroy() {
         if (updateManager != null) updateManager.close();
+        if (mobileApi != null) mobileApi.close();
         koreanRecognizer.close();
         latinRecognizer.close();
         super.onDestroy();

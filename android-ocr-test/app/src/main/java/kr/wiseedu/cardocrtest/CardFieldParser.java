@@ -10,7 +10,7 @@ import java.util.regex.Pattern;
 
 final class CardFieldParser {
     private static final Pattern EMAIL = Pattern.compile("[\\w.+-]+@[\\w.-]+\\.[A-Za-z]{2,}");
-    private static final Pattern NUMBER = Pattern.compile("(?<!\\d)0[1-9]\\d?\\)?[- .]*\\d{3,4}[- .]*(?:\\d{4}|\\d{2} \\d{2})(?!\\d)");
+    private static final Pattern NUMBER = Pattern.compile("(?<!\\d)0[1-9]\\d?\\)?[- .]*\\d{3,4}[- .]*\\d(?: ?\\d){3}(?!\\d)");
     private static final Pattern TITLE = Pattern.compile("대표이사|대표|위원장|의원|회장|부회장|이사장|이사|국장|실장|팀장|과장|부장|차장|대리|사원|주무관|교수|교사|원장|담당|매니저|Youth\\s+Worker|CEO|director|manager|professor|teacher", Pattern.CASE_INSENSITIVE);
     private static final Pattern ORGANIZATION = Pattern.compile("[가-힣][가-힣0-9·()\\s]{1,70}?(?:대학교|대학|학교|교육청|도서관|연구소|연구원|협회|재단|공단|공사|복지관|병원|시청|구청|군청|의회|추진단|센터|그룹|교육|주식회사|회사|법인)");
     private static final Pattern CITY = Pattern.compile("[가-힣]{2,6}(?:특별시|광역시|시|군|구)");
@@ -84,7 +84,7 @@ final class CardFieldParser {
             String label = normalized.substring(previousEnd, match.start()).toLowerCase(Locale.ROOT);
             previousEnd = match.end();
             if (label.matches("(?s).*(?:fax|팩스|(?:^|\\s)f[.: ]).*$")) continue;
-            String value = match.group().trim();
+            String value = match.group().trim().replaceAll("(?<=\\d) (?=\\d)", "");
             String digits = value.replaceAll("\\D", "");
             if (digits.length() < 9 || digits.length() > 11) continue;
             if (digits.startsWith("01")) {
