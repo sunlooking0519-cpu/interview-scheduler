@@ -67,6 +67,22 @@
                 android:textSize="14sp"
                 android:textStyle="bold" />
 
+            <TextView
+                android:id="@+id/updateStatusText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:accessibilityLiveRegion="polite"
+                android:text="@string/update_checking"
+                android:textColor="#475569"
+                android:textSize="13sp" />
+
+            <Button
+                android:id="@+id/checkUpdateButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/update_check_button" />
+
             <ImageView
                 android:id="@+id/cardPreview"
                 android:layout_width="match_parent"

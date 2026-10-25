@@ -10,8 +10,8 @@ android {
         applicationId "kr.wiseedu.cardocrtest"
         minSdk 23
         targetSdk 37
-        versionCode 2
-        versionName "0.2.0"
+        versionCode 3
+        versionName "0.3.0"
     }
 
     compileOptions {
@@ -23,6 +23,8 @@ android {
 dependencies {
     //noinspection GradleDependency -- document-scanner가 검증한 Activity 버전과 맞춘다.
     implementation "androidx.activity:activity:1.6.0"
+    //noinspection GradleDependency -- 현재 오프라인 Android 빌드 환경에서 검증된 버전.
+    implementation "androidx.core:core:1.9.0"
     implementation "com.google.android.gms:play-services-mlkit-document-scanner:16.0.0"
     implementation "com.google.mlkit:text-recognition:16.0.1"
     implementation "com.google.mlkit:text-recognition-korean:16.0.1"

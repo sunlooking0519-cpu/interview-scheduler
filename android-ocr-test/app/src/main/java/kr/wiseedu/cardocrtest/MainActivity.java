@@ -58,6 +58,7 @@ public final class MainActivity extends ComponentActivity {
     private EditText mobileInput;
     private EditText emailInput;
     private boolean hasResult;
+    private UpdateManager updateManager;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -80,6 +81,15 @@ public final class MainActivity extends ComponentActivity {
         findViewById(R.id.copyButton).setOnClickListener(view -> copyResult());
         findViewById(R.id.shareButton).setOnClickListener(view -> shareResult());
         setButtonsEnabled(true);
+        updateManager = new UpdateManager(this, findViewById(R.id.updateStatusText));
+        findViewById(R.id.checkUpdateButton).setOnClickListener(view -> updateManager.check());
+        updateManager.check();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (updateManager != null) updateManager.continueInstallation();
     }
 
     private void startScan() {
@@ -208,6 +218,7 @@ public final class MainActivity extends ComponentActivity {
 
     @Override
     protected void onDestroy() {
+        if (updateManager != null) updateManager.close();
         koreanRecognizer.close();
         latinRecognizer.close();
         super.onDestroy();

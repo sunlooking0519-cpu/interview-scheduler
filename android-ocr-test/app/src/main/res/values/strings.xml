@@ -36,4 +36,12 @@
     <string name="copied_message">OCR 결과를 복사했습니다.</string>
     <string name="share_subject">명함 OCR 테스트 결과</string>
     <string name="share_chooser">OCR 결과 공유</string>
+    <string name="update_check_button">업데이트 다시 확인</string>
+    <string name="update_checking">앱 업데이트 확인 중…</string>
+    <string name="update_current">최신 버전 %1$s 사용 중</string>
+    <string name="update_downloading">새 버전 %1$s 다운로드 중…</string>
+    <string name="update_installing">다운로드 완료 · 안드로이드 설치 화면에서 업데이트를 확인해 주세요.</string>
+    <string name="update_permission">이 앱의 설치 허용 설정을 켜고 돌아오면 업데이트를 계속합니다.</string>
+    <string name="update_permission_denied">설치 허용이 필요합니다. 허용 후 업데이트를 다시 확인해 주세요.</string>
+    <string name="update_failed">업데이트 확인 또는 다운로드에 실패했습니다. 인터넷 연결을 확인하고 다시 시도해 주세요.</string>
 </resources>
