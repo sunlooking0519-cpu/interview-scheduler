@@ -3,6 +3,7 @@ node_modules/
 .next/
 out/
 coverage/
+supabase/.temp/
 *.tsbuildinfo
 .env*
 !.env.example

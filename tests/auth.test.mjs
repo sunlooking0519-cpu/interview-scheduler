@@ -323,6 +323,34 @@ test("a card uploaded from an organization page links to its selected contact", 
   assert.equal(savedCard.contact_id, contactId);
 });
 
+test("sales activity records the result and schedules the next action", async () => {
+  const organizationId = "12345678-1234-1234-1234-123456789abc";
+  let savedActivity, updatedOrganization;
+  const supabase = { schema() { return { from(table) {
+    if (table === "sales_activities") return {
+      insert(row) { savedActivity = row; return { select() { return { single: async () => ({ data: { id: "activity-id" }, error: null }) }; } }; },
+      delete() { return { eq() { return { eq: async () => ({}) }; } }; },
+    };
+    if (table === "sales_organizations") return { update(row) { updatedOrganization = row; return { eq: async () => ({ error: null }) }; } };
+    throw new Error(`Unexpected table: ${table}`);
+  } }; } };
+  const actions = load("src/app/admin/sales/actions.ts", {
+    "next/cache": { revalidatePath() {} }, "next/navigation": { redirect },
+    "@/server/calendar-sync": { scheduleCalendarSync() {} },
+    "@/server/google-calendar": { getCalendarConnection: async () => null },
+    "@/server/admin-auth": { requireAdmin: async () => ({ user: admin, supabase }) },
+  });
+  const form = new FormData();
+  for (const [key, value] of Object.entries({ organization_id: organizationId, activity_type: "call", reaction: "reviewing", summary: "내년 예산 검토 후 회신 예정", occurred_at: "2026-10-25T14:00", next_action: "제안서 재발송", next_action_at: "2026-10-30T10:00", stage: "contacted" })) form.set(key, value);
+  await actions.createSalesActivity(form);
+  assert.equal(savedActivity.organization_id, organizationId);
+  assert.equal(savedActivity.created_by, admin.id);
+  assert.equal(savedActivity.occurred_at, "2026-10-25T05:00:00.000Z");
+  assert.equal(updatedOrganization.next_action, "제안서 재발송");
+  assert.equal(updatedOrganization.next_action_at, "2026-10-30T01:00:00.000Z");
+  assert.equal(updatedOrganization.stage, "contacted");
+});
+
 test("resume validation enforces allowed extensions and the 5MB boundary", () => {
   const resume = load("src/features/booking/resume.ts", {});
   assert.equal(resume.resumeError("resume.PDF", 5 * 1024 * 1024), "");

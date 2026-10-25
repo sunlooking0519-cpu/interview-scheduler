@@ -11,6 +11,7 @@ const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{1
 const field = (data: FormData, key: string, max = 2000) => String(data.get(key) ?? "").trim().slice(0, max);
 const validId = (id: string) => { if (!uuidPattern.test(id)) throw new Error("잘못된 주소입니다."); return id; };
 const salesPath = (id: string) => `/admin/sales/${id}`;
+const toKoreaDate = (value: string) => /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value) ? new Date(`${value}:00+09:00`) : new Date(NaN);
 
 export async function createSalesLead(input: {
   organizationId: string;
@@ -104,10 +105,61 @@ export async function updateOrganization(data: FormData) {
   const name = field(data, "name", 200);
   const kind = field(data, "kind");
   const stage = field(data, "stage");
-  if (!name || !["institution", "school", "other"].includes(kind) || !["lead", "contacted", "meeting", "proposal", "won", "lost"].includes(stage)) throw new Error("필수 항목을 확인해 주세요.");
-  const { error } = await supabase.schema("scheduler").from("sales_organizations").update({ name, kind, stage, website: field(data, "website", 500), address: field(data, "address", 500), notes: field(data, "notes", 10000) }).eq("id", id);
+  const priority = field(data, "priority") || "normal";
+  const nextActionAtValue = field(data, "next_action_at");
+  const nextActionAt = nextActionAtValue ? toKoreaDate(nextActionAtValue) : null;
+  const interestTags = field(data, "interest_tags", 1000).split(",").map((item) => item.trim()).filter(Boolean).slice(0, 20);
+  if (!name || !["institution", "school", "other"].includes(kind) || !["lead", "contacted", "meeting", "proposal", "won", "lost"].includes(stage)
+    || !["high", "normal", "low"].includes(priority) || (nextActionAt && !Number.isFinite(nextActionAt.getTime()))) throw new Error("필수 항목을 확인해 주세요.");
+  const { error } = await supabase.schema("scheduler").from("sales_organizations").update({
+    name, kind, stage, priority, region: field(data, "region", 120), source: field(data, "source", 200),
+    interest_tags: interestTags, next_action: field(data, "next_action", 500) || null,
+    next_action_at: nextActionAt?.toISOString() ?? null, lost_reason: field(data, "lost_reason", 1000) || null,
+    website: field(data, "website", 500), address: field(data, "address", 500), notes: field(data, "notes", 10000),
+  }).eq("id", id);
   if (error) throw new Error("기관 정보를 저장하지 못했습니다.");
   revalidatePath(salesPath(id));
+  revalidatePath("/admin/sales");
+}
+
+export async function createSalesActivity(data: FormData) {
+  const { user, supabase } = await requireAdmin();
+  const organizationId = validId(field(data, "organization_id"));
+  const contactId = field(data, "contact_id");
+  const activityType = field(data, "activity_type");
+  const reaction = field(data, "reaction") || "neutral";
+  const summary = field(data, "summary", 5000);
+  const occurredAt = toKoreaDate(field(data, "occurred_at"));
+  const nextAction = field(data, "next_action", 500);
+  const nextActionValue = field(data, "next_action_at");
+  const nextActionAt = nextActionValue ? toKoreaDate(nextActionValue) : null;
+  const stage = field(data, "stage");
+  if (!summary || !Number.isFinite(occurredAt.getTime())
+    || !["visit", "call", "email", "proposal", "meeting", "note"].includes(activityType)
+    || !["interested", "reviewing", "waiting", "neutral", "no_budget", "not_interested", "no_response"].includes(reaction)
+    || !["lead", "contacted", "meeting", "proposal", "won", "lost"].includes(stage)
+    || (nextActionAt && !Number.isFinite(nextActionAt.getTime()))
+    || (nextActionAt && !nextAction)) throw new Error("활동 내용과 다음 행동을 확인해 주세요.");
+  const db = supabase.schema("scheduler");
+  if (contactId) {
+    if (!uuidPattern.test(contactId)) throw new Error("담당자를 다시 선택해 주세요.");
+    const { data: owner } = await db.from("sales_contacts").select("id").eq("id", contactId).eq("organization_id", organizationId).maybeSingle();
+    if (!owner) throw new Error("이 기관의 담당자를 선택해 주세요.");
+  }
+  const { data: activity, error: activityError } = await db.from("sales_activities").insert({
+    organization_id: organizationId, contact_id: contactId || null, activity_type: activityType,
+    reaction, summary, occurred_at: occurredAt.toISOString(), created_by: user.id,
+  }).select("id").single();
+  if (activityError || !activity) throw new Error("영업 활동을 저장하지 못했습니다. 워크플로우 마이그레이션을 확인해 주세요.");
+  const { error: organizationError } = await db.from("sales_organizations").update({
+    stage, last_contact_at: occurredAt.toISOString(), next_action: nextAction || null,
+    next_action_at: nextActionAt?.toISOString() ?? null,
+  }).eq("id", organizationId);
+  if (organizationError) {
+    await db.from("sales_activities").delete().eq("id", activity.id).eq("organization_id", organizationId);
+    throw new Error("후속 조치를 저장하지 못했습니다.");
+  }
+  revalidatePath(salesPath(organizationId));
   revalidatePath("/admin/sales");
 }
 
@@ -137,7 +189,6 @@ export async function saveMeeting(data: FormData) {
   const organization_id = validId(field(data, "organization_id"));
   const id = field(data, "id");
   const title = field(data, "title", 200);
-  const toKoreaDate = (value: string) => /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value) ? new Date(`${value}:00+09:00`) : new Date(NaN);
   const start = toKoreaDate(field(data, "starts_at"));
   const end = toKoreaDate(field(data, "ends_at"));
   const status = field(data, "status") || "scheduled";
