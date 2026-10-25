@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="#0F172A"
+            android:orientation="vertical"
+            android:padding="24dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/prototype_label"
+                android:textColor="#A5B4FC"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="@string/screen_title"
+                android:textColor="#FFFFFF"
+                android:textSize="28sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="@string/screen_description"
+                android:textColor="#CBD5E1"
+                android:textSize="14sp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <Button
+                android:id="@+id/scanButton"
+                android:layout_width="match_parent"
+                android:layout_height="56dp"
+                android:text="@string/scan_button"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/statusText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:accessibilityLiveRegion="polite"
+                android:text="@string/status_ready"
+                android:textColor="#3730A3"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+
+            <ImageView
+                android:id="@+id/cardPreview"
+                android:layout_width="match_parent"
+                android:layout_height="220dp"
+                android:layout_marginTop="16dp"
+                android:adjustViewBounds="true"
+                android:background="#E2E8F0"
+                android:contentDescription="@string/preview_description"
+                android:scaleType="fitCenter" />
+
+            <TextView style="@style/SectionTitle" android:text="@string/fields_title" />
+
+            <EditText android:id="@+id/organizationInput" style="@style/FieldInput" android:hint="@string/organization_hint" android:importantForAutofill="no" android:inputType="textCapWords" />
+            <EditText android:id="@+id/nameInput" style="@style/FieldInput" android:hint="@string/name_hint" android:importantForAutofill="no" android:inputType="textPersonName" />
+            <EditText android:id="@+id/titleInput" style="@style/FieldInput" android:hint="@string/title_hint" android:importantForAutofill="no" android:inputType="textCapWords" />
+            <EditText android:id="@+id/phoneInput" style="@style/FieldInput" android:hint="@string/phone_hint" android:importantForAutofill="no" android:inputType="phone" />
+            <EditText android:id="@+id/mobileInput" style="@style/FieldInput" android:hint="@string/mobile_hint" android:importantForAutofill="no" android:inputType="phone" />
+            <EditText android:id="@+id/emailInput" style="@style/FieldInput" android:hint="@string/email_hint" android:importantForAutofill="no" android:inputType="textEmailAddress" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:orientation="horizontal"
+                style="?android:attr/buttonBarStyle">
+                <Button android:id="@+id/copyButton" style="?android:attr/buttonBarButtonStyle" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="@string/copy_button" />
+                <Button android:id="@+id/shareButton" style="?android:attr/buttonBarButtonStyle" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_marginStart="8dp" android:layout_weight="1" android:text="@string/share_button" />
+            </LinearLayout>
+
+            <TextView style="@style/SectionTitle" android:text="@string/merged_title" />
+            <TextView android:id="@+id/mergedText" style="@style/ResultText" android:text="@string/result_placeholder" />
+
+            <TextView style="@style/SectionTitle" android:text="@string/korean_title" />
+            <TextView android:id="@+id/koreanText" style="@style/ResultText" android:text="@string/empty_value" />
+
+            <TextView style="@style/SectionTitle" android:text="@string/latin_title" />
+            <TextView android:id="@+id/latinText" style="@style/ResultText" android:text="@string/empty_value" />
+        </LinearLayout>
+    </LinearLayout>
+</ScrollView>

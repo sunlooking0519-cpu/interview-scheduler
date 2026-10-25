@@ -1,0 +1,29 @@
+plugins {
+    id "com.android.application"
+}
+
+android {
+    namespace "kr.wiseedu.cardocrtest"
+    compileSdk 37
+
+    defaultConfig {
+        applicationId "kr.wiseedu.cardocrtest"
+        minSdk 23
+        targetSdk 37
+        versionCode 1
+        versionName "0.1.0"
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    //noinspection GradleDependency -- document-scanner가 검증한 Activity 버전과 맞춘다.
+    implementation "androidx.activity:activity:1.6.0"
+    implementation "com.google.android.gms:play-services-mlkit-document-scanner:16.0.0"
+    implementation "com.google.mlkit:text-recognition:16.0.1"
+    implementation "com.google.mlkit:text-recognition-korean:16.0.1"
+}
