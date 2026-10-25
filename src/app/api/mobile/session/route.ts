@@ -33,3 +33,18 @@ export async function PUT(request: Request) {
   return Response.json({ accessToken: data.session.access_token, refreshToken: data.session.refresh_token,
     expiresAt: data.session.expires_at, storageUrl: `${url}/storage/v1/object/sales-cards`, anonKey: key }, { headers });
 }
+
+export async function DELETE(request: Request) {
+  if (Number(request.headers.get("content-length") ?? 0) > 8192) return failure("요청이 너무 큽니다.", 413);
+  const auth = request.headers.get("authorization") ?? "";
+  if (!/^Bearer [^ ]+$/i.test(auth)) return failure("로그인 정보를 확인해 주세요.", 401);
+  let body: { refreshToken?: unknown };
+  try { body = await request.json(); } catch { return failure("로그인 정보를 확인해 주세요.", 400); }
+  if (typeof body.refreshToken !== "string" || body.refreshToken.length > 4096) return failure("로그인 정보를 확인해 주세요.", 400);
+  const { client } = mobileSupabase();
+  const { error: sessionError } = await client.auth.setSession({ access_token: auth.slice(7), refresh_token: body.refreshToken });
+  if (sessionError) return failure("로그인 정보를 확인해 주세요.", 401);
+  const { error: signOutError } = await client.auth.signOut({ scope: "local" });
+  if (signOutError) return failure("로그아웃을 완료하지 못했습니다.", 502);
+  return Response.json({ ok: true }, { headers });
+}

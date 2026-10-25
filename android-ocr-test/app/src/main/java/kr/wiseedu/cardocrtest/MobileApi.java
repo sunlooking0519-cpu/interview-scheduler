@@ -22,6 +22,7 @@ final class MobileApi {
     static final String SITE = "https://interview-scheduler26.vercel.app";
     private static final int MAX_IMAGE = 10 * 1024 * 1024;
     private final Context context;
+    private final SessionStore sessionStore;
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
     private final Handler main = new Handler(Looper.getMainLooper());
     private String accessToken = "";
@@ -29,20 +30,60 @@ final class MobileApi {
     private String storageUrl = "";
     private String anonKey = "";
     private long expiresAt;
+    private String accountEmail = "";
 
     interface Callback { void done(String error); }
 
-    MobileApi(Context context) { this.context = context.getApplicationContext(); }
+    MobileApi(Context context) {
+        this.context = context.getApplicationContext();
+        sessionStore = new SessionStore(this.context);
+    }
 
-    boolean isLoggedIn() { return !refreshToken.isEmpty(); }
+    boolean isLoggedIn() { return !accessToken.isEmpty() && !refreshToken.isEmpty(); }
+    boolean hasSavedSession() { return !refreshToken.isEmpty(); }
+    String accountEmail() { return accountEmail; }
+
+    void restore(Callback callback) {
+        worker.execute(() -> {
+            String error = "";
+            SessionStore.Saved saved = sessionStore.load();
+            if (saved != null) {
+                refreshToken = saved.refreshToken;
+                accountEmail = saved.email;
+                try { refresh(); }
+                catch (Exception failure) { error = message(failure); }
+            }
+            String result = error;
+            main.post(() -> callback.done(result));
+        });
+    }
 
     void login(String email, String password, Callback callback) {
         worker.execute(() -> {
             String error = "";
+            String previousEmail = accountEmail;
             try {
                 JSONObject request = new JSONObject().put("email", email).put("password", password);
+                accountEmail = email;
                 applySession(call("POST", SITE + "/api/mobile/session", request.toString().getBytes(StandardCharsets.UTF_8), "application/json", "", ""));
+            } catch (Exception failure) { error = message(failure); accountEmail = previousEmail; }
+            String result = error;
+            main.post(() -> callback.done(result));
+        });
+    }
+
+    void logout(Callback callback) {
+        worker.execute(() -> {
+            String error = "";
+            try {
+                if (!refreshToken.isEmpty()) {
+                    ensureSession();
+                    JSONObject request = new JSONObject().put("refreshToken", refreshToken);
+                    call("DELETE", SITE + "/api/mobile/session", request.toString().getBytes(StandardCharsets.UTF_8),
+                        "application/json", accessToken, "");
+                }
             } catch (Exception failure) { error = message(failure); }
+            forgetSession();
             String result = error;
             main.post(() -> callback.done(result));
         });
@@ -99,24 +140,45 @@ final class MobileApi {
 
     private void ensureSession() throws Exception {
         if (refreshToken.isEmpty()) throw new IOException("먼저 관리자 계정으로 로그인해 주세요.");
-        if (System.currentTimeMillis() / 1000L + 60 < expiresAt) return;
+        if (!accessToken.isEmpty() && System.currentTimeMillis() / 1000L + 60 < expiresAt) return;
         refresh();
     }
 
     private void refresh() throws Exception {
         JSONObject request = new JSONObject().put("refreshToken", refreshToken);
-        applySession(call("PUT", SITE + "/api/mobile/session", request.toString().getBytes(StandardCharsets.UTF_8), "application/json", "", ""));
+        try {
+            applySession(call("PUT", SITE + "/api/mobile/session", request.toString().getBytes(StandardCharsets.UTF_8), "application/json", "", ""));
+        } catch (ApiException failure) {
+            if (failure.status == 401 || failure.status == 403) forgetSession();
+            throw failure;
+        }
     }
 
-    private void applySession(JSONObject session) throws IOException {
-        accessToken = session.optString("accessToken");
-        refreshToken = session.optString("refreshToken");
-        storageUrl = session.optString("storageUrl");
-        anonKey = session.optString("anonKey");
-        expiresAt = session.optLong("expiresAt");
-        if (accessToken.isEmpty() || refreshToken.isEmpty() || !storageUrl.startsWith("https://") || anonKey.isEmpty()) {
+    private void applySession(JSONObject session) throws Exception {
+        String nextAccess = session.optString("accessToken");
+        String nextRefresh = session.optString("refreshToken");
+        String nextStorage = session.optString("storageUrl");
+        String nextKey = session.optString("anonKey");
+        long nextExpiry = session.optLong("expiresAt");
+        if (nextAccess.isEmpty() || nextRefresh.isEmpty() || !nextStorage.startsWith("https://") || nextKey.isEmpty()) {
             throw new IOException("로그인 응답이 올바르지 않습니다.");
         }
+        sessionStore.save(nextRefresh, accountEmail);
+        accessToken = nextAccess;
+        refreshToken = nextRefresh;
+        storageUrl = nextStorage;
+        anonKey = nextKey;
+        expiresAt = nextExpiry;
+    }
+
+    private void forgetSession() {
+        accessToken = "";
+        refreshToken = "";
+        storageUrl = "";
+        anonKey = "";
+        accountEmail = "";
+        expiresAt = 0;
+        sessionStore.clear();
     }
 
     private JSONObject callWithRefresh(String method, String url, byte[] body, String type, boolean storage) throws Exception {

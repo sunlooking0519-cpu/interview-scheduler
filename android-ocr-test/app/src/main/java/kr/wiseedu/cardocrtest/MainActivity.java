@@ -7,6 +7,7 @@ import android.graphics.BitmapFactory;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.SystemClock;
+import android.view.View;
 import android.widget.Button;
 import android.widget.ArrayAdapter;
 import android.widget.EditText;
@@ -54,6 +55,8 @@ public final class MainActivity extends ComponentActivity {
     private TextView koreanText;
     private TextView latinText;
     private TextView mergedText;
+    private TextView accountStatus;
+    private LinearLayout loginPanel;
     private EditText organizationInput;
     private EditText nameInput;
     private EditText titleInput;
@@ -63,6 +66,7 @@ public final class MainActivity extends ComponentActivity {
     private Uri scannedImage;
     private MobileApi mobileApi;
     private boolean busy;
+    private boolean accountChecking = true;
     private UpdateManager updateManager;
 
     @Override
@@ -81,15 +85,25 @@ public final class MainActivity extends ComponentActivity {
         phoneInput = findViewById(R.id.phoneInput);
         mobileInput = findViewById(R.id.mobileInput);
         emailInput = findViewById(R.id.emailInput);
+        accountStatus = findViewById(R.id.accountStatusText);
+        loginPanel = findViewById(R.id.loginPanel);
         mobileApi = new MobileApi(this);
 
         findViewById(R.id.scanButton).setOnClickListener(view -> startScan());
         findViewById(R.id.loginButton).setOnClickListener(view -> login());
+        findViewById(R.id.retryAccountButton).setOnClickListener(view -> retryAccount());
+        findViewById(R.id.logoutButton).setOnClickListener(view -> logout());
         findViewById(R.id.saveButton).setOnClickListener(view -> saveCard());
         findViewById(R.id.webListButton).setOnClickListener(view -> startActivity(
             new Intent(Intent.ACTION_VIEW, Uri.parse(MobileApi.SITE + "/admin/sales/cards"))));
         findViewById(R.id.retryRegionButton).setOnClickListener(view -> retryRegion());
         setButtonsEnabled(true);
+        mobileApi.restore(error -> {
+            accountChecking = false;
+            showAccountState();
+            if (!error.isEmpty()) status.setText(error);
+            setButtonsEnabled(true);
+        });
         updateManager = new UpdateManager(this, findViewById(R.id.updateStatusText));
         findViewById(R.id.checkUpdateButton).setOnClickListener(view -> updateManager.check());
         updateManager.check();
@@ -203,13 +217,50 @@ public final class MainActivity extends ComponentActivity {
             busy = false;
             ((EditText) findViewById(R.id.loginPasswordInput)).setText("");
             status.setText(error.isEmpty() ? getString(R.string.login_complete) : error);
+            showAccountState();
             setButtonsEnabled(true);
         });
     }
 
+    private void retryAccount() {
+        busy = true;
+        accountChecking = true;
+        accountStatus.setText(R.string.login_restoring);
+        setButtonsEnabled(false);
+        mobileApi.restore(error -> {
+            busy = false;
+            accountChecking = false;
+            showAccountState();
+            if (!error.isEmpty()) status.setText(error);
+            setButtonsEnabled(true);
+        });
+    }
+
+    private void logout() {
+        busy = true;
+        setButtonsEnabled(false);
+        mobileApi.logout(error -> {
+            busy = false;
+            status.setText(error.isEmpty() ? getString(R.string.logout_complete)
+                : getString(R.string.logout_complete) + " " + error);
+            showAccountState();
+            setButtonsEnabled(true);
+        });
+    }
+
+    private void showAccountState() {
+        boolean loggedIn = mobileApi.isLoggedIn();
+        boolean saved = mobileApi.hasSavedSession();
+        accountStatus.setText(loggedIn ? getString(R.string.login_signed_in, mobileApi.accountEmail())
+            : getString(saved ? R.string.login_restore_failed : R.string.login_signed_out));
+        loginPanel.setVisibility(loggedIn ? View.GONE : View.VISIBLE);
+        findViewById(R.id.retryAccountButton).setVisibility(!loggedIn && saved ? View.VISIBLE : View.GONE);
+        findViewById(R.id.logoutButton).setVisibility(loggedIn ? View.VISIBLE : View.GONE);
+    }
+
     private void saveCard() {
         if (scannedImage == null) { status.setText(R.string.save_image_required); return; }
-        if (!mobileApi.isLoggedIn()) { status.setText(R.string.login_required); return; }
+        if (!mobileApi.hasSavedSession()) { status.setText(R.string.login_required); return; }
         String organization = organizationInput.getText().toString().trim();
         String name = nameInput.getText().toString().trim();
         if (organization.isEmpty() || name.isEmpty()) { status.setText(R.string.save_fields_required); return; }
@@ -224,6 +275,7 @@ public final class MainActivity extends ComponentActivity {
                 busy = false;
                 status.setText(error.isEmpty() ? getString(R.string.save_complete) : error);
                 if (error.isEmpty()) scannedImage = null;
+                showAccountState();
                 setButtonsEnabled(true);
             });
     }
@@ -307,7 +359,9 @@ public final class MainActivity extends ComponentActivity {
         Button scanButton = findViewById(R.id.scanButton);
         scanButton.setEnabled(enabled && !busy);
         findViewById(R.id.loginButton).setEnabled(enabled && !busy);
-        findViewById(R.id.saveButton).setEnabled(enabled && !busy && scannedImage != null);
+        findViewById(R.id.retryAccountButton).setEnabled(enabled && !busy);
+        findViewById(R.id.logoutButton).setEnabled(enabled && !busy);
+        findViewById(R.id.saveButton).setEnabled(enabled && !busy && !accountChecking && scannedImage != null);
         findViewById(R.id.retryRegionButton).setEnabled(enabled && !busy && scannedImage != null);
     }
 
