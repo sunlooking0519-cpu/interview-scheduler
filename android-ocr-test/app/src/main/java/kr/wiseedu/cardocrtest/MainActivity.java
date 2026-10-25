@@ -57,6 +57,7 @@ public final class MainActivity extends ComponentActivity {
     private EditText phoneInput;
     private EditText mobileInput;
     private EditText emailInput;
+    private boolean hasResult;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -78,6 +79,7 @@ public final class MainActivity extends ComponentActivity {
         findViewById(R.id.scanButton).setOnClickListener(view -> startScan());
         findViewById(R.id.copyButton).setOnClickListener(view -> copyResult());
         findViewById(R.id.shareButton).setOnClickListener(view -> shareResult());
+        setButtonsEnabled(true);
     }
 
     private void startScan() {
@@ -150,6 +152,7 @@ public final class MainActivity extends ComponentActivity {
         String merged = CardFieldParser.mergeUniqueLines(results[0], results[1]);
         mergedText.setText(merged.isEmpty() ? getString(R.string.no_result) : merged);
         applyFields(CardFieldParser.parse(merged));
+        hasResult = !merged.isEmpty();
         long elapsed = SystemClock.elapsedRealtime() - startedAt;
         if (merged.isEmpty()) {
             status.setText(R.string.status_no_text);
@@ -199,8 +202,8 @@ public final class MainActivity extends ComponentActivity {
     private void setButtonsEnabled(boolean enabled) {
         Button scanButton = findViewById(R.id.scanButton);
         scanButton.setEnabled(enabled);
-        findViewById(R.id.copyButton).setEnabled(enabled);
-        findViewById(R.id.shareButton).setEnabled(enabled);
+        findViewById(R.id.copyButton).setEnabled(enabled && hasResult);
+        findViewById(R.id.shareButton).setEnabled(enabled && hasResult);
     }
 
     @Override
