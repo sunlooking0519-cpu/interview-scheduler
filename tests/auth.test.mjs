@@ -100,6 +100,13 @@ test("business card OCR does not mistake organizations, departments or slogans f
   assert.equal(card.guessSalesCardFields("(주)와이즈교육\n김경희 | 국장").name, "김경희");
 });
 
+test("selected business card areas override conservative full-card guesses", () => {
+  const card = load("src/features/admin/sales-card-ocr.ts", {});
+  assert.equal(card.extractSelectedCardField("기관명: 문화정보도서관", "organization"), "문화정보도서관");
+  assert.equal(card.extractSelectedCardField("문화정보도서관   이 윤 영", "name"), "이윤영");
+  assert.equal(card.extractSelectedCardField("담당자: 라온", "name"), "라온");
+});
+
 test("business card recognition uses only the browser OCR worker", async () => {
   let recognized = 0;
   let terminated = 0;

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "../../../../lib/supabase/client";
 import { saveBusinessCard } from "@/app/admin/sales/actions";
-import { guessSalesCardFields, type SalesCardFields } from "@/features/admin/sales-card-ocr";
+import { extractSelectedCardField, guessSalesCardFields, type SalesCardFields } from "@/features/admin/sales-card-ocr";
 import { recognizeBusinessCard, recognizeBusinessCardField, type CardField } from "@/features/admin/recognize-business-card";
 import { BusinessCardCropper } from "@/features/admin/components/business-card-cropper";
 import { BusinessCardFilePicker } from "@/features/admin/components/business-card-file-picker";
@@ -65,14 +65,14 @@ export function BusinessCardUploader({ organizationId, contacts }: { organizatio
     setStatus(`${field === "name" ? "이름" : "기관명"} 영역을 다시 읽는 중입니다…`);
     try {
       const text = await recognizeBusinessCardField(cropped, field);
-      const value = guessSalesCardFields(text)[field];
+      const value = extractSelectedCardField(text, field);
       if (!value) {
         setStatus("선택 영역에서 확실한 결과를 찾지 못했습니다. 영역을 좁혀 다시 시도하거나 직접 입력해 주세요.");
         return;
       }
       setFields((current) => ({ ...current, [field]: value }));
       setOcrText((current) => [current, text].filter(Boolean).join("\n"));
-      setStatus(`'${value}'를 입력했습니다. 사진과 대조해 확인해 주세요.`);
+      setStatus(`선택 영역을 우선 적용해 ${field === "name" ? "이름" : "기관명"}을 '${value}'(으)로 변경했습니다. 사진과 대조해 확인해 주세요.`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "선택 영역을 읽지 못했습니다. 직접 입력해 주세요.");
     } finally {

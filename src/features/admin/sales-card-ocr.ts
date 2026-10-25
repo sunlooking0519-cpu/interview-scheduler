@@ -1,9 +1,10 @@
 export type SalesCardFields = { name: string; organization: string; title: string; phone: string; mobile: string; email: string };
 export type SalesKind = "institution" | "school" | "other";
+export type SelectedCardField = "organization" | "name";
 
 const schoolPattern = /학교|대학|학원|교육청|university|college|school|academy/i;
-const institutionPattern = /기관|센터|연구소|연구원|협회|재단|공단|공사|복지관|병원|시청|구청|군청|관공서|의회|추진단|institute|foundation|center|association|hospital/i;
-const koreanOrganizationPattern = /(?:\(주\)|㈜\s*)?[가-힣][가-힣0-9·()\s]{1,70}?(?:대학교|대학|학교|교육청|연구소|연구원|협회|재단|공단|공사|복지관|병원|시청|구청|군청|의회|추진단|센터|그룹|교육|주식회사|회사|법인)/;
+const institutionPattern = /기관|센터|도서관|연구소|연구원|협회|재단|공단|공사|복지관|병원|시청|구청|군청|관공서|의회|추진단|institute|foundation|center|association|hospital|library/i;
+const koreanOrganizationPattern = /(?:\(주\)|㈜\s*)?[가-힣][가-힣0-9·()\s]{1,70}?(?:대학교|대학|학교|교육청|도서관|연구소|연구원|협회|재단|공단|공사|복지관|병원|시청|구청|군청|의회|추진단|센터|그룹|교육|주식회사|회사|법인)/;
 const englishOrganizationPattern = /[A-Za-z][A-Za-z0-9&.'-]*(?:\s+[A-Za-z][A-Za-z0-9&.'-]*){0,5}\s+(?:group|corp(?:oration)?|company|inc\.?|ltd\.?|university|college|school|academy|institute|foundation|center|association|hospital)\b/i;
 const titlePattern = /대표이사|대표|위원장|회장|부회장|이사장|이사|국장|실장|팀장|과장|부장|차장|대리|사원|교수|교사|원장|담당|매니저|CEO|director|manager|professor|teacher/i;
 const contactNumberPattern = /(?<!\d)(?:(?:\+82[- .]?(?:1[016789]|2|[3-9]\d))|(?:0(?:1[016789]|2|[3-9]\d)))[- .]?\d{3,4}[- .]?\d{4}(?!\d)/g;
@@ -26,6 +27,14 @@ function linesOf(text: string) {
   return text.split(/\r?\n/).map((line) => line.replace(/\s+/g, " ").trim()).filter(Boolean);
 }
 
+function selectedLine(value: string) {
+  return value
+    .replace(/^(?:기관(?:명)?|학교(?:명)?|업체(?:명)?|회사(?:명)?|성명|이름|담당자)\s*[:：.-]?\s*/i, "")
+    .replace(/^[|,;:/\\]+|[|,;:/\\]+$/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function findOrganization(lines: string[]) {
   for (const line of lines) {
     const korean = line.match(koreanOrganizationPattern)?.[0]?.trim();
@@ -35,6 +44,39 @@ function findOrganization(lines: string[]) {
   }
   // A slogan or a noisy OCR line is not enough evidence for an organization name.
   return "";
+}
+
+/**
+ * A manual crop is an explicit correction by the administrator. Unlike the full-card
+ * parser, this extractor therefore accepts a clean selected line even when it does not
+ * contain a known organization suffix or a conservatively recognised Korean surname.
+ */
+export function extractSelectedCardField(text: string, field: SelectedCardField) {
+  const lines = linesOf(text).map(selectedLine).filter(Boolean);
+  if (!lines.length) return "";
+
+  if (field === "organization") {
+    const recognized = findOrganization(lines);
+    if (recognized) return recognized;
+    return lines
+      .filter((line) => !line.includes("@") && ![...line.matchAll(contactNumberPattern)].length)
+      .sort((left, right) => right.replace(/\s/g, "").length - left.replace(/\s/g, "").length)[0] ?? "";
+  }
+
+  for (const line of lines) {
+    const compact = line.replace(/\s/g, "");
+    if (/^[가-힣]{2,4}$/.test(compact)) return compact;
+    const spacedCandidates = [...line.matchAll(/(?:^|[^가-힣])([가-힣](?:\s+[가-힣]){1,3})(?=$|[^가-힣])/g)]
+      .map((match) => match[1].replace(/\s/g, ""));
+    if (spacedCandidates.length) return spacedCandidates.at(-1) ?? "";
+    const candidates = line.match(/[가-힣]{2,4}/g) ?? [];
+    const candidate = candidates.findLast((value) => !nonPersonEnding.test(value) && !departmentEnding.test(value));
+    if (candidate) return candidate;
+  }
+
+  return lines.find((line) =>
+    line.length <= 80 && !line.includes("@") && ![...line.matchAll(contactNumberPattern)].length
+  ) ?? "";
 }
 
 function findName(lines: string[], organization: string) {
