@@ -98,7 +98,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-or-publishable-key
 
 Google 캘린더 조회·예약 자동 동기화 설정은 [설정 안내](docs/google-calendar-setup.md)를 참고하세요. SQL 적용, Google OAuth 설정 및 Vercel 서버 환경 변수 설정 후 관리자에서 계정을 연결합니다.
 
-영업관리 기능을 배포하기 전에 [영업관리 설정 안내](docs/sales-management-setup.md)에 따라 SQL을 실행하세요. `/admin/sales`에서 명함 OCR로 영업 대상을 등록하고, 접촉 활동·반응·다음 행동·기한을 기록해 오늘의 후속 조치 큐로 관리합니다. 기관별 담당자·미팅·제안서 버전도 함께 보관하며, 연결된 Google 캘린더에 영업 미팅을 동기화합니다.
+영업관리 기능을 배포하기 전에 [영업관리 설정 안내](docs/sales-management-setup.md)에 따라 SQL을 실행하세요. `/admin/sales`에서 명함 OCR로 영업 대상을 등록하고, 첫 미팅 뒤 1차 메일을 보낸 기관을 2차 전화·이메일 작업 큐로 관리합니다. 접촉 차수·반응·다음 행동·기한과 기관별 담당자·미팅·제안서 버전을 보관하며, 연결된 Google 캘린더에 영업 미팅을 동기화합니다.
 
 명함 OCR은 기본적으로 브라우저에서 Tesseract.js로 실행합니다. 사진에서 명함 영역을 지정한 뒤 인식 결과를 확인·수정할 수 있으며 Google Vision 키는 필요하지 않습니다. 명함을 등록할 때만 비공개 `sales-cards` 저장소에 사진을 보관합니다.
 

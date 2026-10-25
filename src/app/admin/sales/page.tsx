@@ -2,14 +2,22 @@ import Link from "next/link";
 import { requireAdmin } from "@/server/admin-auth";
 import { retrySalesCalendarSync } from "./actions";
 import { SalesLeadCreator } from "@/features/admin/components/sales-lead-creator";
+import {
+  elapsedDays,
+  followUpStatusLabels,
+  isDueBefore,
+  isDueOn,
+  isFirstFollowUpQueue,
+  isOpenSalesOrganization,
+  koreaDateKey,
+  nextActionTypeLabels,
+} from "@/features/admin/sales-follow-up";
 
 export const dynamic = "force-dynamic";
 
-const kinds: Record<string, string> = { institution: "기관", school: "학교", other: "기타" };
 const stages: Record<string, string> = { lead: "신규", contacted: "접촉", meeting: "상담", proposal: "제안", won: "성사", lost: "종료" };
 const stageOrder = ["lead", "contacted", "meeting", "proposal", "won", "lost"];
-const priorityLabels: Record<string, string> = { high: "집중", normal: "일반", low: "낮음" };
-const dateKey = (value: string | Date) => new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Seoul" }).format(new Date(value));
+const reactionLabels: Record<string, string> = { interested: "관심 높음", reviewing: "검토 중", waiting: "시기 대기", neutral: "보통", no_budget: "예산 없음", not_interested: "관심 없음", no_response: "응답 없음" };
 const dateLabel = (value: string) => new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", month: "short", day: "numeric", weekday: "short" }).format(new Date(value));
 
 type Organization = {
@@ -20,48 +28,81 @@ type Organization = {
   priority: string;
   region: string | null;
   next_action: string | null;
+  next_action_type: string | null;
   next_action_at: string | null;
+  next_contact_id: string | null;
   last_contact_at: string | null;
+  last_follow_up_round: number;
+  follow_up_status: string;
   updated_at: string;
+};
+
+type Contact = {
+  id: string;
+  organization_id: string;
+  name: string;
+  title: string | null;
+  phone: string | null;
+  mobile: string | null;
+  email: string | null;
+};
+
+type FirstFollowUp = {
+  organization_id: string;
+  occurred_at: string;
+  reaction: string;
 };
 
 export default async function SalesPage({ searchParams }: {
   searchParams: Promise<{ q?: string; stage?: string; view?: string; sync?: string }>;
 }) {
   const { supabase } = await requireAdmin();
-  const { q = "", stage = "", view = "all", sync = "" } = await searchParams;
-  const { data, error } = await supabase.schema("scheduler").from("sales_organizations")
-    .select("id,name,kind,stage,priority,region,next_action,next_action_at,last_contact_at,updated_at")
+  const { q = "", stage = "", view = "first-followup", sync = "" } = await searchParams;
+  const db = supabase.schema("scheduler");
+  const { data, error } = await db.from("sales_organizations")
+    .select("id,name,kind,stage,priority,region,next_action,next_action_type,next_action_at,next_contact_id,last_contact_at,last_follow_up_round,follow_up_status,updated_at")
     .order("updated_at", { ascending: false }).limit(300);
   const organizations = (data ?? []) as Organization[];
   const ids = organizations.map((organization) => organization.id);
-  const { data: contactRows } = ids.length
-    ? await supabase.schema("scheduler").from("sales_contacts").select("organization_id").in("organization_id", ids).limit(3000)
-    : { data: [] as { organization_id: string }[] };
-  const contactCounts = new Map<string, number>();
-  for (const contact of contactRows ?? []) contactCounts.set(contact.organization_id, (contactCounts.get(contact.organization_id) ?? 0) + 1);
+  const [contactsResult, firstFollowUpsResult] = ids.length ? await Promise.all([
+    db.from("sales_contacts").select("id,organization_id,name,title,phone,mobile,email").in("organization_id", ids).order("created_at", { ascending: true }).limit(3000),
+    db.from("sales_activities").select("organization_id,occurred_at,reaction").in("organization_id", ids).eq("follow_up_round", 1).eq("activity_type", "email").order("occurred_at", { ascending: false }).limit(3000),
+  ]) : [{ data: [] }, { data: [] }];
+  const contacts = (contactsResult.data ?? []) as Contact[];
+  const firstFollowUps = (firstFollowUpsResult.data ?? []) as FirstFollowUp[];
+  const loadError = error || contactsResult.error || firstFollowUpsResult.error;
 
-  const today = dateKey(new Date());
-  const isOpen = (organization: Organization) => !["won", "lost"].includes(organization.stage);
-  const isOverdue = (organization: Organization) => Boolean(organization.next_action_at && dateKey(organization.next_action_at) < today && isOpen(organization));
-  const isToday = (organization: Organization) => Boolean(organization.next_action_at && dateKey(organization.next_action_at) === today && isOpen(organization));
-  const isUnplanned = (organization: Organization) => Boolean(!organization.next_action_at && isOpen(organization));
+  const contactsByOrganization = new Map<string, Contact[]>();
+  for (const contact of contacts) contactsByOrganization.set(contact.organization_id, [...(contactsByOrganization.get(contact.organization_id) ?? []), contact]);
+  const firstFollowUpByOrganization = new Map<string, FirstFollowUp>();
+  for (const activity of firstFollowUps) if (!firstFollowUpByOrganization.has(activity.organization_id)) firstFollowUpByOrganization.set(activity.organization_id, activity);
+
+  const today = koreaDateKey(new Date());
+  const firstQueue = organizations.filter(isFirstFollowUpQueue);
+  const isSecondOverdue = (organization: Organization) => isFirstFollowUpQueue(organization) && isDueBefore(organization, today);
+  const isSecondToday = (organization: Organization) => isFirstFollowUpQueue(organization) && isDueOn(organization, today);
   const summary = {
-    overdue: organizations.filter(isOverdue).length,
-    today: organizations.filter(isToday).length,
-    unplanned: organizations.filter(isUnplanned).length,
-    active: organizations.filter(isOpen).length,
+    firstFollowUp: firstQueue.length,
+    overdue: organizations.filter(isSecondOverdue).length,
+    today: organizations.filter(isSecondToday).length,
+    active: organizations.filter(isOpenSalesOrganization).length,
   };
   const normalizedQuery = q.trim().toLocaleLowerCase("ko-KR");
   const visibleOrganizations = organizations.filter((organization) => {
-    if (normalizedQuery && ![organization.name, organization.region ?? "", organization.next_action ?? ""].some((value) => value.toLocaleLowerCase("ko-KR").includes(normalizedQuery))) return false;
+    const organizationContacts = contactsByOrganization.get(organization.id) ?? [];
+    if (normalizedQuery && ![
+      organization.name,
+      organization.region ?? "",
+      organization.next_action ?? "",
+      ...organizationContacts.flatMap((contact) => [contact.name, contact.email ?? "", contact.mobile ?? "", contact.phone ?? ""]),
+    ].some((value) => value.toLocaleLowerCase("ko-KR").includes(normalizedQuery))) return false;
     if (stage && organization.stage !== stage) return false;
-    if (view === "overdue" && !isOverdue(organization)) return false;
-    if (view === "today" && !isToday(organization)) return false;
-    if (view === "unplanned" && !isUnplanned(organization)) return false;
+    if (view === "first-followup" && !isFirstFollowUpQueue(organization)) return false;
+    if (view === "overdue" && !isSecondOverdue(organization)) return false;
+    if (view === "today" && !isSecondToday(organization)) return false;
     return true;
   }).sort((a, b) => {
-    const rank = (item: Organization) => isOverdue(item) ? 0 : isToday(item) ? 1 : item.next_action_at ? 2 : 3;
+    const rank = (item: Organization) => isSecondOverdue(item) ? 0 : isSecondToday(item) ? 1 : item.next_action_at ? 2 : 3;
     return rank(a) - rank(b) || (a.next_action_at ?? "9999").localeCompare(b.next_action_at ?? "9999");
   });
 
@@ -69,24 +110,22 @@ export default async function SalesPage({ searchParams }: {
   return <div className="space-y-6">
     <header className="overflow-hidden rounded-3xl bg-gradient-to-br from-slate-950 via-indigo-950 to-indigo-700 p-6 text-white shadow-lg sm:p-8">
       <div className="flex flex-col justify-between gap-6 lg:flex-row lg:items-end">
-        <div><p className="text-xs font-bold tracking-[0.22em] text-indigo-200">SALES WORKSPACE</p><h1 className="mt-3 text-3xl font-bold sm:text-4xl">오늘 할 영업이 먼저 보이게</h1><p className="mt-3 max-w-2xl text-sm leading-6 text-indigo-100 sm:text-base">명함을 등록한 뒤, 접촉 기록과 다음 행동을 끊김 없이 이어갑니다. 시트의 긴 메모는 활동 이력으로, ‘다시 연락’은 마감이 있는 할 일로 관리합니다.</p></div>
-        <div className="grid shrink-0 grid-cols-2 gap-2 text-xs sm:grid-cols-4 lg:grid-cols-2">
-          {["명함 등록", "활동 기록", "후속 일정", "성사·종료"].map((text, index) => <div key={text} className="rounded-xl bg-white/10 px-3 py-2 backdrop-blur"><span className="mr-2 text-indigo-200">{index + 1}</span>{text}</div>)}
-        </div>
+        <div><p className="text-xs font-bold tracking-[0.22em] text-indigo-200">SECOND FOLLOW-UP</p><h1 className="mt-3 text-3xl font-bold sm:text-4xl">1차 메일 이후, 다음 연락을 놓치지 않게</h1><p className="mt-3 max-w-2xl text-sm leading-6 text-indigo-100 sm:text-base">첫 미팅 뒤 1차 후속 메일을 보낸 기관을 한곳에 모았습니다. 담당자에게 바로 전화하거나 메일을 열고, 결과를 기록하면 다음 단계로 이동합니다.</p></div>
+        <div className="rounded-2xl bg-white/10 px-5 py-4 backdrop-blur"><p className="text-xs font-bold text-indigo-200">현재 우선 업무</p><p className="mt-1 text-2xl font-bold">2차 후속 {summary.firstFollowUp}건</p><p className="mt-1 text-xs text-indigo-100">기한 지남 {summary.overdue} · 오늘 {summary.today}</p></div>
       </div>
     </header>
 
-    {error && <p role="alert" className="rounded-xl bg-red-50 p-4 text-sm text-red-700">영업 데이터를 불러오지 못했습니다. 새 워크플로우 마이그레이션과 scheduler API 노출을 확인해 주세요.</p>}
+    {loadError && <p role="alert" className="rounded-xl bg-red-50 p-4 text-sm text-red-700">영업 데이터를 불러오지 못했습니다. 후속관리 마이그레이션과 scheduler API 노출을 확인해 주세요.</p>}
     <section aria-label="업무 요약" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-      <Link href="/admin/sales?view=overdue" className={`${metricClass} ${view === "overdue" ? "border-rose-400 ring-2 ring-rose-100" : "border-slate-200"}`}><p className="text-sm font-semibold text-rose-700">기한 지남</p><p className="mt-2 text-3xl font-bold text-slate-950">{summary.overdue}</p><p className="mt-1 text-xs text-slate-500">가장 먼저 확인</p></Link>
-      <Link href="/admin/sales?view=today" className={`${metricClass} ${view === "today" ? "border-amber-400 ring-2 ring-amber-100" : "border-slate-200"}`}><p className="text-sm font-semibold text-amber-700">오늘 후속</p><p className="mt-2 text-3xl font-bold text-slate-950">{summary.today}</p><p className="mt-1 text-xs text-slate-500">전화·메일·자료 발송</p></Link>
-      <Link href="/admin/sales?view=unplanned" className={`${metricClass} ${view === "unplanned" ? "border-sky-400 ring-2 ring-sky-100" : "border-slate-200"}`}><p className="text-sm font-semibold text-sky-700">다음 행동 없음</p><p className="mt-2 text-3xl font-bold text-slate-950">{summary.unplanned}</p><p className="mt-1 text-xs text-slate-500">누락되기 쉬운 대상</p></Link>
-      <Link href="/admin/sales?view=all" className={`${metricClass} ${view === "all" ? "border-indigo-400 ring-2 ring-indigo-100" : "border-slate-200"}`}><p className="text-sm font-semibold text-indigo-700">진행 중</p><p className="mt-2 text-3xl font-bold text-slate-950">{summary.active}</p><p className="mt-1 text-xs text-slate-500">전체 영업 파이프라인</p></Link>
+      <Link href="/admin/sales?view=first-followup" className={`${metricClass} ${view === "first-followup" ? "border-indigo-500 ring-2 ring-indigo-100" : "border-slate-200"}`}><p className="text-sm font-semibold text-indigo-700">1차 메일 완료 · 2차 필요</p><p className="mt-2 text-3xl font-bold text-slate-950">{summary.firstFollowUp}</p><p className="mt-1 text-xs text-slate-500">관리자의 기본 작업 큐</p></Link>
+      <Link href="/admin/sales?view=overdue" className={`${metricClass} ${view === "overdue" ? "border-rose-400 ring-2 ring-rose-100" : "border-slate-200"}`}><p className="text-sm font-semibold text-rose-700">2차 후속 기한 지남</p><p className="mt-2 text-3xl font-bold text-slate-950">{summary.overdue}</p><p className="mt-1 text-xs text-slate-500">가장 먼저 연락</p></Link>
+      <Link href="/admin/sales?view=today" className={`${metricClass} ${view === "today" ? "border-amber-400 ring-2 ring-amber-100" : "border-slate-200"}`}><p className="text-sm font-semibold text-amber-700">오늘 2차 후속</p><p className="mt-2 text-3xl font-bold text-slate-950">{summary.today}</p><p className="mt-1 text-xs text-slate-500">전화·이메일 실행</p></Link>
+      <Link href="/admin/sales?view=all" className={`${metricClass} ${view === "all" ? "border-slate-500 ring-2 ring-slate-100" : "border-slate-200"}`}><p className="text-sm font-semibold text-slate-700">전체 진행 중</p><p className="mt-2 text-3xl font-bold text-slate-950">{summary.active}</p><p className="mt-1 text-xs text-slate-500">전체 영업 파이프라인</p></Link>
     </section>
 
     <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
-      <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-lg font-bold">진행 단계</h2><p className="mt-1 text-sm text-slate-500">대상을 단계별로 옮기고, 각 접촉 뒤에는 다음 행동을 예약하세요.</p></div><form action={retrySalesCalendarSync}><button className="rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:border-indigo-400">캘린더 동기화 재시도</button></form></div>
-      <div className="mt-4 grid grid-cols-3 gap-2 lg:grid-cols-6">{stageOrder.map((key) => <Link key={key} href={`/admin/sales?stage=${key}`} className={`rounded-xl border px-3 py-3 ${stage === key ? "border-indigo-500 bg-indigo-50" : "border-slate-200 bg-slate-50"}`}><p className="text-xs text-slate-500">{stages[key]}</p><p className="mt-1 text-xl font-bold">{organizations.filter((item) => item.stage === key).length}</p></Link>)}</div>
+      <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-lg font-bold">진행 단계</h2><p className="mt-1 text-sm text-slate-500">1차 메일은 기관 상세에서 후속 차수 `1차`로 기록하면 이 작업 큐에 자동으로 들어옵니다.</p></div><form action={retrySalesCalendarSync}><button className="rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:border-indigo-400">캘린더 동기화 재시도</button></form></div>
+      <div className="mt-4 grid grid-cols-3 gap-2 lg:grid-cols-6">{stageOrder.map((key) => <Link key={key} href={`/admin/sales?view=${view}&stage=${key}`} className={`rounded-xl border px-3 py-3 ${stage === key ? "border-indigo-500 bg-indigo-50" : "border-slate-200 bg-slate-50"}`}><p className="text-xs text-slate-500">{stages[key]}</p><p className="mt-1 text-xl font-bold">{organizations.filter((item) => item.stage === key).length}</p></Link>)}</div>
       {sync === "done" && <p role="status" className="mt-3 text-sm text-emerald-700">대기 중인 일정의 동기화를 처리했습니다.</p>}{sync === "retry" && <p role="alert" className="mt-3 text-sm text-amber-700">일부 일정이 아직 대기 중입니다. 잠시 후 다시 시도해 주세요.</p>}{sync === "error" && <p role="alert" className="mt-3 text-sm text-red-700">Google 연결을 확인해 주세요.</p>}
     </section>
 
@@ -96,16 +135,22 @@ export default async function SalesPage({ searchParams }: {
     </details>
 
     <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
-      <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between"><div><h2 className="text-lg font-bold">후속 조치 큐 <span className="text-indigo-600">{visibleOrganizations.length}</span></h2><p className="mt-1 text-sm text-slate-500">기한이 지난 일, 오늘 할 일, 예정된 일 순서입니다.</p></div><form className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_140px_110px]"><input type="hidden" name="view" value={view}/><input name="q" defaultValue={q} placeholder="기관·지역·다음 행동 검색" aria-label="영업 대상 검색" className="min-w-0 rounded-xl border border-slate-300 px-3 py-2"/><select name="stage" defaultValue={stage} aria-label="진행 단계" className="rounded-xl border border-slate-300 px-3 py-2"><option value="">전체 단계</option>{Object.entries(stages).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select><button className="rounded-xl bg-slate-900 px-4 py-2 font-semibold text-white">조회</button></form></div>
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between"><div><h2 className="text-lg font-bold">{view === "all" ? "전체 영업 대상" : "2차 후속 작업 큐"} <span className="text-indigo-600">{visibleOrganizations.length}</span></h2><p className="mt-1 text-sm text-slate-500">{view === "all" ? "모든 진행 상태를 확인합니다." : "기한이 지난 일, 오늘 할 일, 예정된 일 순서입니다."}</p></div><form className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_140px_110px]"><input type="hidden" name="view" value={view}/><input name="q" defaultValue={q} placeholder="기관·담당자·연락처 검색" aria-label="영업 대상 검색" className="min-w-0 rounded-xl border border-slate-300 px-3 py-2"/><select name="stage" defaultValue={stage} aria-label="진행 단계" className="rounded-xl border border-slate-300 px-3 py-2"><option value="">전체 단계</option>{Object.entries(stages).map(([value, text]) => <option key={value} value={value}>{text}</option>)}</select><button className="rounded-xl bg-slate-900 px-4 py-2 font-semibold text-white">조회</button></form></div>
       <div className="mt-5 space-y-3">{visibleOrganizations.map((organization) => {
-        const overdue = isOverdue(organization); const dueToday = isToday(organization);
-        return <Link key={organization.id} href={`/admin/sales/${organization.id}`} className="group grid gap-3 rounded-2xl border border-slate-200 p-4 transition hover:border-indigo-400 hover:shadow-sm md:grid-cols-[minmax(0,1fr)_minmax(220px,0.8fr)_auto] md:items-center">
-          <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><strong className="break-words text-base text-slate-950">{organization.name}</strong>{organization.priority === "high" && <span className="rounded-full bg-rose-100 px-2 py-0.5 text-xs font-bold text-rose-700">집중</span>}<span className="rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-700">{stages[organization.stage] ?? organization.stage}</span></div><p className="mt-1 text-sm text-slate-500">{[organization.region, kinds[organization.kind], `담당자 ${contactCounts.get(organization.id) ?? 0}명`, priorityLabels[organization.priority]].filter(Boolean).join(" · ")}</p></div>
-          <div className={`rounded-xl px-3 py-2 ${overdue ? "bg-rose-50" : dueToday ? "bg-amber-50" : "bg-slate-50"}`}><p className={`text-xs font-bold ${overdue ? "text-rose-700" : dueToday ? "text-amber-700" : "text-slate-500"}`}>{overdue ? "기한 지남" : dueToday ? "오늘" : organization.next_action_at ? dateLabel(organization.next_action_at) : "다음 행동 미정"}</p><p className="mt-1 line-clamp-2 text-sm font-medium text-slate-800">{organization.next_action || "상세 화면에서 다음 행동을 정해 주세요."}</p></div>
-          <span className="text-sm font-bold text-indigo-700 group-hover:translate-x-0.5">기록하기 →</span>
-        </Link>;
+        const organizationContacts = contactsByOrganization.get(organization.id) ?? [];
+        const contact = organizationContacts.find((item) => item.id === organization.next_contact_id) ?? organizationContacts[0];
+        const phone = contact?.mobile || contact?.phone || "";
+        const firstFollowUp = firstFollowUpByOrganization.get(organization.id);
+        const overdue = isSecondOverdue(organization);
+        const dueToday = isSecondToday(organization);
+        const mailSubject = encodeURIComponent(`[후속 연락] ${organization.name}`);
+        return <article key={organization.id} className="grid gap-4 rounded-2xl border border-slate-200 p-4 md:grid-cols-[minmax(0,1fr)_minmax(220px,0.8fr)_auto] md:items-center">
+          <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><Link href={`/admin/sales/${organization.id}`} className="break-words text-base font-bold text-slate-950 hover:text-indigo-700">{organization.name}</Link>{organization.priority === "high" && <span className="rounded-full bg-rose-100 px-2 py-0.5 text-xs font-bold text-rose-700">집중</span>}<span className="rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-700">{stages[organization.stage] ?? organization.stage}</span></div><p className="mt-1 text-sm text-slate-600">{contact ? `${contact.name}${contact.title ? ` · ${contact.title}` : ""}` : "담당자 미지정"}</p><p className="mt-1 text-xs text-slate-500">{firstFollowUp ? `1차 메일 ${dateLabel(firstFollowUp.occurred_at)} · ${elapsedDays(firstFollowUp.occurred_at)}일 경과 · ${reactionLabels[firstFollowUp.reaction] ?? firstFollowUp.reaction}` : `후속 상태 ${followUpStatusLabels[organization.follow_up_status] ?? organization.follow_up_status}`}</p></div>
+          <div className={`rounded-xl px-3 py-2 ${overdue ? "bg-rose-50" : dueToday ? "bg-amber-50" : "bg-slate-50"}`}><p className={`text-xs font-bold ${overdue ? "text-rose-700" : dueToday ? "text-amber-700" : "text-slate-500"}`}>{overdue ? "기한 지남" : dueToday ? "오늘" : organization.next_action_at ? dateLabel(organization.next_action_at) : "다음 행동 미정"}</p><p className="mt-1 line-clamp-2 text-sm font-medium text-slate-800">{organization.next_action_type ? `${nextActionTypeLabels[organization.next_action_type]} · ` : ""}{organization.next_action || "상세 화면에서 다음 행동을 정해 주세요."}</p></div>
+          <div className="flex flex-wrap gap-2 md:max-w-[220px] md:justify-end">{phone && <a href={`tel:${phone.replace(/[^0-9+]/g, "")}`} className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-bold text-emerald-800">전화</a>}{contact?.email && <a href={`mailto:${contact.email}?subject=${mailSubject}`} className="rounded-lg border border-sky-300 bg-sky-50 px-3 py-2 text-sm font-bold text-sky-800">이메일</a>}<Link href={`/admin/sales/${organization.id}#quick-log`} className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-bold text-white">결과 기록</Link></div>
+        </article>;
       })}</div>
-      {!error && !visibleOrganizations.length && <div className="mt-5 rounded-xl bg-slate-50 p-8 text-center"><p className="font-semibold text-slate-700">조건에 맞는 영업 대상이 없습니다.</p><p className="mt-1 text-sm text-slate-500">필터를 초기화하거나 새 명함을 등록해 주세요.</p></div>}
+      {!loadError && !visibleOrganizations.length && <div className="mt-5 rounded-xl bg-slate-50 p-8 text-center"><p className="font-semibold text-slate-700">현재 조건에 맞는 2차 후속 대상이 없습니다.</p><p className="mt-1 text-sm text-slate-500">기관 상세에서 1차 후속 메일과 다음 연락 기한을 기록하면 여기에 표시됩니다.</p></div>}
     </section>
   </div>;
 }

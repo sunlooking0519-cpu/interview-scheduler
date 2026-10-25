@@ -325,14 +325,12 @@ test("a card uploaded from an organization page links to its selected contact", 
 
 test("sales activity records the result and schedules the next action", async () => {
   const organizationId = "12345678-1234-1234-1234-123456789abc";
-  let savedActivity, updatedOrganization;
-  const supabase = { schema() { return { from(table) {
-    if (table === "sales_activities") return {
-      insert(row) { savedActivity = row; return { select() { return { single: async () => ({ data: { id: "activity-id" }, error: null }) }; } }; },
-      delete() { return { eq() { return { eq: async () => ({}) }; } }; },
-    };
-    if (table === "sales_organizations") return { update(row) { updatedOrganization = row; return { eq: async () => ({ error: null }) }; } };
-    throw new Error(`Unexpected table: ${table}`);
+  const contactId = "22222222-2222-2222-2222-222222222222";
+  let rpcArgs;
+  const supabase = { schema() { return { rpc: async (name, args) => {
+    assert.equal(name, "record_sales_activity");
+    rpcArgs = args;
+    return { data: "activity-id", error: null };
   } }; } };
   const actions = load("src/app/admin/sales/actions.ts", {
     "next/cache": { revalidatePath() {} }, "next/navigation": { redirect },
@@ -341,14 +339,33 @@ test("sales activity records the result and schedules the next action", async ()
     "@/server/admin-auth": { requireAdmin: async () => ({ user: admin, supabase }) },
   });
   const form = new FormData();
-  for (const [key, value] of Object.entries({ organization_id: organizationId, activity_type: "call", reaction: "reviewing", summary: "내년 예산 검토 후 회신 예정", occurred_at: "2026-10-25T14:00", next_action: "제안서 재발송", next_action_at: "2026-10-30T10:00", stage: "contacted" })) form.set(key, value);
+  for (const [key, value] of Object.entries({ organization_id: organizationId, contact_id: contactId, activity_type: "email", reaction: "reviewing", summary: "1차 후속 메일 발송", occurred_at: "2026-10-25T14:00", follow_up_round: "1", follow_up_status: "pending", next_action: "2차 후속 전화", next_action_type: "call", next_action_at: "2026-10-30T10:00", next_contact_id: contactId, stage: "contacted" })) form.set(key, value);
   await actions.createSalesActivity(form);
-  assert.equal(savedActivity.organization_id, organizationId);
-  assert.equal(savedActivity.created_by, admin.id);
-  assert.equal(savedActivity.occurred_at, "2026-10-25T05:00:00.000Z");
-  assert.equal(updatedOrganization.next_action, "제안서 재발송");
-  assert.equal(updatedOrganization.next_action_at, "2026-10-30T01:00:00.000Z");
-  assert.equal(updatedOrganization.stage, "contacted");
+  assert.equal(rpcArgs.p_organization_id, organizationId);
+  assert.equal(rpcArgs.p_contact_id, contactId);
+  assert.equal(rpcArgs.p_activity_type, "email");
+  assert.equal(rpcArgs.p_follow_up_round, 1);
+  assert.equal(rpcArgs.p_follow_up_status, "pending");
+  assert.equal(rpcArgs.p_occurred_at, "2026-10-25T05:00:00.000Z");
+  assert.equal(rpcArgs.p_next_action, "2차 후속 전화");
+  assert.equal(rpcArgs.p_next_action_type, "call");
+  assert.equal(rpcArgs.p_next_action_at, "2026-10-30T01:00:00.000Z");
+  assert.equal(rpcArgs.p_next_contact_id, contactId);
+  assert.equal(rpcArgs.p_stage, "contacted");
+  form.set("activity_type", "call");
+  await assert.rejects(() => actions.createSalesActivity(form), /활동 내용과 다음 행동/);
+});
+
+test("first follow-up queue contains only open organizations waiting for second contact", () => {
+  const followUp = load("src/features/admin/sales-follow-up.ts", {});
+  const base = { stage: "contacted", last_follow_up_round: 1, follow_up_status: "pending", next_action_at: "2026-10-25T10:00:00.000Z" };
+  assert.equal(followUp.isFirstFollowUpQueue(base), true);
+  assert.equal(followUp.isFirstFollowUpQueue({ ...base, follow_up_status: "waiting_reply" }), true);
+  assert.equal(followUp.isFirstFollowUpQueue({ ...base, last_follow_up_round: 2 }), false);
+  assert.equal(followUp.isFirstFollowUpQueue({ ...base, follow_up_status: "responded" }), false);
+  assert.equal(followUp.isFirstFollowUpQueue({ ...base, stage: "won" }), false);
+  assert.equal(followUp.isDueOn(base, "2026-10-25"), true);
+  assert.equal(followUp.isDueBefore({ ...base, next_action_at: "2026-10-24T10:00:00.000Z" }, "2026-10-25"), true);
 });
 
 test("resume validation enforces allowed extensions and the 5MB boundary", () => {
