@@ -3,3 +3,6 @@
 /local.properties
 /**/build/
 *.iml
+
+# 개인정보가 포함된 로컬 OCR 테스트 자료
+/test-data/local/
