@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { requireAdmin } from "@/server/admin-auth";
 import { retrySalesCalendarSync } from "./actions";
-import { SalesLeadCreator } from "@/features/admin/components/sales-lead-creator";
 import {
   elapsedDays,
   followUpStatusLabels,
@@ -128,11 +127,6 @@ export default async function SalesPage({ searchParams }: {
       <div className="mt-4 grid grid-cols-3 gap-2 lg:grid-cols-6">{stageOrder.map((key) => <Link key={key} href={`/admin/sales?view=${view}&stage=${key}`} className={`rounded-xl border px-3 py-3 ${stage === key ? "border-indigo-500 bg-indigo-50" : "border-slate-200 bg-slate-50"}`}><p className="text-xs text-slate-500">{stages[key]}</p><p className="mt-1 text-xl font-bold">{organizations.filter((item) => item.stage === key).length}</p></Link>)}</div>
       {sync === "done" && <p role="status" className="mt-3 text-sm text-emerald-700">대기 중인 일정의 동기화를 처리했습니다.</p>}{sync === "retry" && <p role="alert" className="mt-3 text-sm text-amber-700">일부 일정이 아직 대기 중입니다. 잠시 후 다시 시도해 주세요.</p>}{sync === "error" && <p role="alert" className="mt-3 text-sm text-red-700">Google 연결을 확인해 주세요.</p>}
     </section>
-
-    <details className="group rounded-2xl border border-indigo-200 bg-indigo-50/40 p-4 sm:p-6">
-      <summary className="flex cursor-pointer list-none items-center justify-between gap-3"><div><h2 className="font-bold text-indigo-950">새 영업 대상 · 명함 등록</h2><p className="mt-1 text-sm text-indigo-800">현장에서 돌아온 직후 사진 한 장으로 시작합니다.</p></div><span className="rounded-full bg-indigo-600 px-3 py-1 text-sm font-bold text-white group-open:hidden">열기 +</span><span className="hidden text-sm font-semibold text-indigo-700 group-open:inline">접기</span></summary>
-      <div className="mt-5"><SalesLeadCreator /></div>
-    </details>
 
     <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between"><div><h2 className="text-lg font-bold">{view === "all" ? "전체 영업 대상" : "2차 후속 작업 큐"} <span className="text-indigo-600">{visibleOrganizations.length}</span></h2><p className="mt-1 text-sm text-slate-500">{view === "all" ? "모든 진행 상태를 확인합니다." : "기한이 지난 일, 오늘 할 일, 예정된 일 순서입니다."}</p></div><form className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_140px_110px]"><input type="hidden" name="view" value={view}/><input name="q" defaultValue={q} placeholder="기관·담당자·연락처 검색" aria-label="영업 대상 검색" className="min-w-0 rounded-xl border border-slate-300 px-3 py-2"/><select name="stage" defaultValue={stage} aria-label="진행 단계" className="rounded-xl border border-slate-300 px-3 py-2"><option value="">전체 단계</option>{Object.entries(stages).map(([value, text]) => <option key={value} value={value}>{text}</option>)}</select><button className="rounded-xl bg-slate-900 px-4 py-2 font-semibold text-white">조회</button></form></div>
