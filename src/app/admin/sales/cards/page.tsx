@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { requireAdmin } from "@/server/admin-auth";
+import { BusinessCardRegistrationLauncher } from "@/features/admin/components/business-card-registration-launcher";
 
 export const dynamic = "force-dynamic";
 
@@ -85,7 +86,7 @@ export default async function BusinessCardsPage({ searchParams }: {
     <header className="rounded-3xl bg-gradient-to-br from-slate-950 via-indigo-950 to-indigo-700 p-6 text-white shadow-lg sm:p-8">
       <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
         <div><p className="text-xs font-bold tracking-[0.22em] text-indigo-200">BUSINESS CARDS</p><h1 className="mt-3 text-3xl font-bold">명함 관리</h1><p className="mt-2 max-w-2xl text-sm leading-6 text-indigo-100">등록된 명함을 먼저 확인하고 기관·담당자 정보로 검색할 수 있습니다.</p></div>
-        <Link href="/admin/sales/cards/new" className="rounded-xl bg-white px-5 py-3 text-center text-sm font-bold text-indigo-800 shadow-sm">새 명함 등록</Link>
+        <BusinessCardRegistrationLauncher />
       </div>
     </header>
 
@@ -116,7 +117,7 @@ export default async function BusinessCardsPage({ searchParams }: {
           </div>
         </article>;
       })}</div>
-      {!loadError && !visibleCards.length && <div className="mt-5 rounded-xl bg-slate-50 p-8 text-center"><p className="font-semibold text-slate-700">{normalizedQuery ? "검색 결과가 없습니다." : "아직 등록된 명함이 없습니다."}</p><Link href={normalizedQuery ? "/admin/sales/cards" : "/admin/sales/cards/new"} className="mt-3 inline-flex rounded-xl bg-indigo-600 px-4 py-2 text-sm font-bold text-white">{normalizedQuery ? "전체 명함 보기" : "첫 명함 등록"}</Link></div>}
+      {!loadError && !visibleCards.length && <div className="mt-5 rounded-xl bg-slate-50 p-8 text-center"><p className="font-semibold text-slate-700">{normalizedQuery ? "검색 결과가 없습니다." : "아직 등록된 명함이 없습니다."}</p>{normalizedQuery ? <Link href="/admin/sales/cards" className="mt-3 inline-flex rounded-xl bg-indigo-600 px-4 py-2 text-sm font-bold text-white">전체 명함 보기</Link> : <BusinessCardRegistrationLauncher compact />}</div>}
     </section>
   </div>;
 }

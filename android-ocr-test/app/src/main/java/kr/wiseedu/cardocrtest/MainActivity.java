@@ -118,6 +118,20 @@ public final class MainActivity extends ComponentActivity {
         updateManager = new UpdateManager(this, findViewById(R.id.updateStatusText));
         findViewById(R.id.checkUpdateButton).setOnClickListener(view -> updateManager.check());
         updateManager.check();
+        findViewById(R.id.scanButton).post(() -> handleRegistrationLink(getIntent()));
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        handleRegistrationLink(intent);
+    }
+
+    private void handleRegistrationLink(Intent intent) {
+        Uri link = intent == null ? null : intent.getData();
+        if (link == null || !"wisecardocr".equals(link.getScheme()) || !"new-card".equals(link.getHost())) return;
+        setIntent(new Intent(Intent.ACTION_MAIN));
+        startScan();
     }
 
     @Override
