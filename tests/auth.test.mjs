@@ -31,6 +31,25 @@ const bookingDates = load("src/features/booking/dates.ts", {});
 const admin = { id: "admin-id", email: "admin@example.com", app_metadata: { role: "admin" } };
 const redirect = (path) => { throw new Error(`REDIRECT:${path}`); };
 
+test("sales dashboard prioritizes overdue follow-ups and distinguishes activity dates from scheduled work", () => {
+  const followUp = load("src/features/admin/sales-follow-up.ts", {});
+  const { buildSalesDashboard } = load("src/features/admin/sales-dashboard-model.ts", { "./sales-follow-up": followUp });
+  const base = { stage: "contacted", priority: "normal", address: null, next_action_type: null, next_contact_id: null, last_follow_up_round: 0, follow_up_status: "pending" };
+  const organizations = [
+    { ...base, id: "late", name: "가 기관", next_action: "전화", next_action_at: "2026-10-26T16:00:00+09:00" },
+    { ...base, id: "today", name: "나 기관", next_action: "이메일", next_action_at: "2026-10-27T09:00:00+09:00" },
+    { ...base, id: "card", name: "다 기관", next_action: null, next_action_at: null },
+  ];
+  const result = buildSalesDashboard({ organizations, contacts: [], cards: [{ id: "card-1", organization_id: "card", contact_id: null, created_at: "2026-10-27T00:00:00Z" }], visits: [],
+    monthActivities: [{ id: "activity", organization_id: "late", contact_id: null, activity_type: "visit", occurred_at: "2026-10-25T18:00:00Z", created_at: "2026-10-27T01:00:00Z", summary: "방문", follow_up_round: null }], meetings: [], today: "2026-10-27", month: "2026-10" });
+  assert.deepEqual(Array.from(result.tasks, (task) => task.id), ["next:late", "next:today", "visit:card-1"]);
+  assert.equal(result.counts.overdue, 1);
+  assert.equal(result.counts.today, 1);
+  assert.equal(result.counts.missingVisit, 1);
+  assert.equal(result.events.find((event) => event.id === "activity:activity").date, "2026-10-26");
+  assert.equal(result.events.find((event) => event.id === "next:late").type, "due");
+});
+
 test("dashboard counts only reservations whose interview time has not passed in Korea", () => {
   const { getUpcomingReservationStats } = load("src/features/admin/reservation-stats.ts", {});
   const now = new Date("2026-10-18T10:00:00+09:00");

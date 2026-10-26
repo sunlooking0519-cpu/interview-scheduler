@@ -1,7 +1,8 @@
 import Link from "next/link";
-import Image from "next/image";
 import { requireAdmin } from "@/server/admin-auth";
 import { retrySalesCalendarSync } from "./actions";
+import { SalesDashboard } from "@/features/admin/components/sales-dashboard";
+import type { DashboardActivity, DashboardCard, DashboardContact, DashboardMeeting, DashboardOrganization } from "@/features/admin/sales-dashboard-model";
 import {
   elapsedDays,
   followUpStatusLabels,
@@ -27,6 +28,7 @@ type Organization = {
   stage: string;
   priority: string;
   region: string | null;
+  address: string | null;
   next_action: string | null;
   next_action_type: string | null;
   next_action_at: string | null;
@@ -53,83 +55,47 @@ type FirstFollowUp = {
   reaction: string;
 };
 
-type VisitCard = { id: string; organization_id: string; contact_id: string | null; image_path: string; created_at: string; ocr_fields: Record<string, unknown> | null };
-type VisitActivity = { id: string; organization_id: string; contact_id: string | null; occurred_at: string; summary: string };
-
 export default async function SalesPage({ searchParams }: {
-  searchParams: Promise<{ q?: string; stage?: string; view?: string; sync?: string; saved?: string }>;
+  searchParams: Promise<{ q?: string; stage?: string; view?: string; sync?: string; saved?: string; month?: string; day?: string }>;
 }) {
   const { supabase } = await requireAdmin();
-  const { q = "", stage = "", view = "visits", sync = "", saved = "" } = await searchParams;
+  const { q = "", stage = "", view = "visits", sync = "", saved = "", month: requestedMonth, day: requestedDay } = await searchParams;
   const db = supabase.schema("scheduler");
   const { data, error } = await db.from("sales_organizations")
-    .select("id,name,kind,stage,priority,region,next_action,next_action_type,next_action_at,next_contact_id,last_contact_at,last_follow_up_round,follow_up_status,updated_at")
+    .select("id,name,kind,stage,priority,region,address,next_action,next_action_type,next_action_at,next_contact_id,last_contact_at,last_follow_up_round,follow_up_status,updated_at")
     .order("updated_at", { ascending: false }).limit(300);
   const organizations = (data ?? []) as Organization[];
   const ids = organizations.map((organization) => organization.id);
   if (view === "visits") {
-    const [cardsResult, contactsResult, visitsResult] = await Promise.all([
-      db.from("sales_business_cards").select("id,organization_id,contact_id,image_path,created_at,ocr_fields").order("created_at", { ascending: false }).limit(300),
-      ids.length ? db.from("sales_contacts").select("id,organization_id,name,title,phone,mobile,email").in("organization_id", ids).limit(3000) : Promise.resolve({ data: [], error: null }),
-      ids.length ? db.from("sales_activities").select("id,organization_id,contact_id,occurred_at,summary").in("organization_id", ids).eq("activity_type", "visit").order("occurred_at", { ascending: false }).limit(3000) : Promise.resolve({ data: [], error: null }),
+    const today = koreaDateKey(new Date());
+    const month = requestedMonth && /^(20\d{2})-(0[1-9]|1[0-2])$/.test(requestedMonth) ? requestedMonth : today.slice(0, 7);
+    const [year, monthNumber] = month.split("-").map(Number);
+    const lastDay = new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
+    const selectedDay = requestedDay && requestedDay.startsWith(`${month}-`) && /^\d{4}-\d{2}-\d{2}$/.test(requestedDay) && Number(requestedDay.slice(-2)) >= 1 && Number(requestedDay.slice(-2)) <= lastDay
+      ? requestedDay : month === today.slice(0, 7) ? today : `${month}-01`;
+    const nextMonth = new Date(Date.UTC(year, monthNumber, 1)).toISOString().slice(0, 7);
+    const monthStart = new Date(`${month}-01T00:00:00+09:00`).toISOString();
+    const monthEnd = new Date(`${nextMonth}-01T00:00:00+09:00`).toISOString();
+    const empty = Promise.resolve({ data: [], error: null });
+    const [cardsResult, contactsResult, visitsResult, activitiesResult, meetingsResult, recentResult] = await Promise.all([
+      ids.length ? db.from("sales_business_cards").select("id,organization_id,contact_id,created_at").in("organization_id", ids).order("created_at", { ascending: false }).limit(3000) : empty,
+      ids.length ? db.from("sales_contacts").select("id,organization_id,name,title,phone,mobile,email").in("organization_id", ids).order("created_at", { ascending: true }).limit(3000) : empty,
+      ids.length ? db.from("sales_activities").select("id,organization_id,contact_id,activity_type,occurred_at,created_at,summary,follow_up_round").in("organization_id", ids).eq("activity_type", "visit").order("occurred_at", { ascending: false }).limit(3000) : empty,
+      ids.length ? db.from("sales_activities").select("id,organization_id,contact_id,activity_type,occurred_at,created_at,summary,follow_up_round").in("organization_id", ids).gte("occurred_at", monthStart).lt("occurred_at", monthEnd).order("occurred_at", { ascending: true }).limit(3000) : empty,
+      ids.length ? db.from("sales_meetings").select("id,organization_id,contact_id,title,starts_at,location,status").in("organization_id", ids).gte("starts_at", monthStart).lt("starts_at", monthEnd).order("starts_at", { ascending: true }).limit(3000) : empty,
+      ids.length ? db.from("sales_activities").select("id,organization_id,contact_id,activity_type,occurred_at,created_at,summary,follow_up_round").in("organization_id", ids).order("created_at", { ascending: false }).limit(15) : empty,
     ]);
-    const cards = (cardsResult.data ?? []) as VisitCard[];
-    const contacts = (contactsResult.data ?? []) as Contact[];
-    const visits = (visitsResult.data ?? []) as VisitActivity[];
-    const signedResult = cards.length ? await supabase.storage.from("sales-cards").createSignedUrls(cards.map((card) => card.image_path), 60 * 10) : { data: [], error: null };
-    const imageByPath = new Map((signedResult.data ?? []).flatMap((item) => item.path && item.signedUrl ? [[item.path, item.signedUrl] as const] : []));
-    const organizationById = new Map(organizations.map((organization) => [organization.id, organization]));
-    const contactById = new Map(contacts.map((contact) => [contact.id, contact]));
-    const key = (organizationId: string, contactId: string | null) => `${organizationId}:${contactId ?? ""}`;
-    const latestVisitByContact = new Map<string, VisitActivity>();
-    const latestVisitByOrganization = new Map<string, VisitActivity>();
-    for (const visit of visits) {
-      if (!latestVisitByContact.has(key(visit.organization_id, visit.contact_id))) latestVisitByContact.set(key(visit.organization_id, visit.contact_id), visit);
-      if (!latestVisitByOrganization.has(visit.organization_id)) latestVisitByOrganization.set(visit.organization_id, visit);
-    }
-    const visitForCard = (card: VisitCard) => card.contact_id
-      ? latestVisitByContact.get(key(card.organization_id, card.contact_id))
-      : latestVisitByOrganization.get(card.organization_id);
-    const normalizedQuery = q.trim().toLocaleLowerCase("ko-KR");
-    const visibleCards = cards.filter((card) => {
-      const organization = organizationById.get(card.organization_id);
-      const contact = card.contact_id ? contactById.get(card.contact_id) : undefined;
-      return !normalizedQuery || [organization?.name ?? "", contact?.name ?? "", contact?.phone ?? "", contact?.mobile ?? "", contact?.email ?? ""]
-        .some((value) => value.toLocaleLowerCase("ko-KR").includes(normalizedQuery));
-    });
-    const pending = cards.filter((card) => !visitForCard(card)).length;
-    const visitOrganizations = new Set(visits.map((visit) => visit.organization_id)).size;
-    const loadError = error || cardsResult.error || contactsResult.error || visitsResult.error;
-    return <div className="space-y-6">
-      <header className="rounded-3xl bg-gradient-to-br from-slate-950 via-indigo-950 to-indigo-700 p-6 text-white sm:p-8">
-        <p className="text-xs font-bold tracking-[0.2em] text-indigo-200">SALES WORKFLOW · STEP 1</p>
-        <h1 className="mt-3 text-3xl font-bold sm:text-4xl">방문과 상담부터 기록합니다</h1>
-        <p className="mt-3 max-w-2xl text-sm leading-6 text-indigo-100">명함에서 만난 담당자를 선택해 방문일과 상담 내용을 남기세요. 기록을 확인한 뒤 맞춤 자료 발송으로 이어갑니다.</p>
-        <div className="mt-5 flex flex-wrap gap-2"><Link href="/admin/sales/cards" className="rounded-lg bg-white px-4 py-2 text-sm font-bold text-indigo-800">명함 관리</Link><Link href="/admin/sales?view=first-followup" className="rounded-lg border border-white/50 px-4 py-2 text-sm font-bold text-white">기존 2차 후속 작업 큐</Link></div>
-      </header>
-      {saved === "visit" && <p role="status" className="rounded-xl bg-emerald-50 p-4 text-sm font-semibold text-emerald-800">방문 기록을 저장했습니다. 아래 기록과 기관 타임라인에서 확인할 수 있습니다.</p>}
-      {loadError && <p role="alert" className="rounded-xl bg-red-50 p-4 text-sm text-red-700">명함 또는 방문 기록을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.</p>}
-      <section aria-label="방문 업무 요약" className="grid gap-3 sm:grid-cols-3">
-        <div className="rounded-2xl border border-slate-200 bg-white p-5"><p className="text-sm font-semibold text-slate-600">등록된 명함</p><p className="mt-2 text-3xl font-bold">{cards.length}</p></div>
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5"><p className="text-sm font-semibold text-amber-800">방문 기록 대기</p><p className="mt-2 text-3xl font-bold">{pending}</p></div>
-        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5"><p className="text-sm font-semibold text-emerald-800">방문 기록 기관</p><p className="mt-2 text-3xl font-bold">{visitOrganizations}</p></div>
-      </section>
-      <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
-        <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end"><div><h2 className="text-xl font-bold">명함에서 방문 기록 시작</h2><p className="mt-1 text-sm text-slate-500">담당자별 최근 방문 내용을 바로 확인할 수 있습니다. 최신 명함 최대 300장.</p></div><form className="flex gap-2"><input type="hidden" name="view" value="visits"/><input name="q" defaultValue={q} aria-label="명함 검색" placeholder="기관·담당자·연락처 검색" className="min-w-0 flex-1 rounded-xl border border-slate-300 px-3 py-2 text-sm"/><button className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-bold text-white">검색</button></form></div>
-        <div className="mt-5 grid gap-3 lg:grid-cols-2">{visibleCards.map((card) => {
-          const organization = organizationById.get(card.organization_id);
-          const contact = card.contact_id ? contactById.get(card.contact_id) : undefined;
-          const latestVisit = visitForCard(card);
-          const imageUrl = imageByPath.get(card.image_path);
-          return <article key={card.id} className="flex gap-4 rounded-xl border border-slate-200 p-4">
-            {imageUrl ? <Image src={imageUrl} alt="명함 미리보기" width={128} height={96} unoptimized className="h-24 w-32 shrink-0 rounded-lg bg-slate-100 object-contain"/> : <div className="flex h-24 w-32 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-xs text-slate-400">명함 사진</div>}
-            <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h3 className="break-words font-bold">{organization?.name ?? "기관명 미확인"}</h3><span className={`rounded-full px-2 py-0.5 text-xs font-bold ${latestVisit ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>{latestVisit ? "방문 기록 완료" : "기록 대기"}</span></div><p className="mt-1 text-sm text-slate-600">{contact?.name ?? "담당자 미지정"}{contact?.title ? ` · ${contact.title}` : ""}</p><p className="mt-1 break-all text-xs text-slate-500">{contact?.mobile || contact?.phone || contact?.email || "연락처 미입력"}</p>{latestVisit && <p className="mt-2 line-clamp-2 text-sm text-slate-700">{dateLabel(latestVisit.occurred_at)} · {latestVisit.summary}</p>}<Link href={`/admin/sales/cards/${card.id}/visit`} className="mt-3 inline-flex rounded-lg bg-indigo-600 px-3 py-2 text-sm font-bold text-white">{latestVisit ? "방문 내용 추가" : "방문 내용 기록"}</Link></div>
-          </article>;
-        })}</div>
-        {!loadError && !visibleCards.length && <div className="mt-5 rounded-xl bg-slate-50 p-8 text-center text-sm text-slate-600">{normalizedQuery ? "검색 결과가 없습니다." : "등록된 명함이 없습니다. 명함 관리에서 모바일 앱으로 먼저 등록해 주세요."}<div className="mt-3"><Link href="/admin/sales/cards" className="font-bold text-indigo-700">명함 관리로 이동 →</Link></div></div>}
-      </section>
-      <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6"><h2 className="text-xl font-bold">최근 방문 기록</h2><div className="mt-4 space-y-3">{visits.slice(0, 10).map((visit) => <article key={visit.id} className="rounded-xl bg-slate-50 p-4"><div className="flex flex-wrap items-center gap-2"><Link href={`/admin/sales/${visit.organization_id}`} className="font-bold text-indigo-700">{organizationById.get(visit.organization_id)?.name ?? "기관"}</Link><span className="text-sm text-slate-500">{visit.contact_id ? contactById.get(visit.contact_id)?.name : "담당자 미지정"} · {dateLabel(visit.occurred_at)}</span></div><p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-800">{visit.summary}</p></article>)}</div>{!visits.length && <p className="mt-4 text-sm text-slate-500">아직 방문 기록이 없습니다. 위 명함에서 첫 상담 내용을 남겨 주세요.</p>}</section>
-    </div>;
+    return <SalesDashboard
+      organizations={organizations as DashboardOrganization[]}
+      contacts={(contactsResult.data ?? []) as DashboardContact[]}
+      cards={(cardsResult.data ?? []) as DashboardCard[]}
+      visits={(visitsResult.data ?? []) as DashboardActivity[]}
+      monthActivities={(activitiesResult.data ?? []) as DashboardActivity[]}
+      meetings={(meetingsResult.data ?? []) as DashboardMeeting[]}
+      recentActivities={(recentResult.data ?? []) as DashboardActivity[]}
+      month={month} selectedDay={selectedDay} today={today} saved={saved}
+      loadError={Boolean(error || cardsResult.error || contactsResult.error || visitsResult.error || activitiesResult.error || meetingsResult.error || recentResult.error)}
+    />;
   }
   const [contactsResult, firstFollowUpsResult] = ids.length ? await Promise.all([
     db.from("sales_contacts").select("id,organization_id,name,title,phone,mobile,email").in("organization_id", ids).order("created_at", { ascending: true }).limit(3000),
