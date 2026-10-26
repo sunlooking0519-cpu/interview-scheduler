@@ -6,6 +6,7 @@ import { requireAdmin } from "@/server/admin-auth";
 import { scheduleCalendarSync, syncCalendarQueue } from "@/server/calendar-sync";
 import { getCalendarConnection } from "@/server/google-calendar";
 import type { SalesCardFields, SalesKind } from "@/features/admin/sales-card-ocr";
+import { koreaDateKey } from "@/features/admin/sales-follow-up";
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const field = (data: FormData, key: string, max = 2000) => String(data.get(key) ?? "").trim().slice(0, max);
@@ -184,6 +185,54 @@ export async function createSalesActivity(data: FormData) {
   if (error) throw new Error("영업 활동을 저장하지 못했습니다. 후속관리 마이그레이션을 확인해 주세요.");
   revalidatePath(salesPath(organizationId));
   revalidatePath("/admin/sales");
+}
+
+export async function recordCardVisit(_previous: { error: string }, data: FormData): Promise<{ error: string }> {
+  const { supabase } = await requireAdmin();
+  const cardId = field(data, "card_id");
+  const contactId = field(data, "contact_id");
+  const visitDate = field(data, "visit_date");
+  const summary = field(data, "summary", 5001);
+  if (!uuidPattern.test(cardId) || (contactId && !uuidPattern.test(contactId))
+    || !/^\d{4}-\d{2}-\d{2}$/.test(visitDate) || !summary || summary.length > 5000) {
+    return { error: "방문일, 담당자와 상담 내용을 확인해 주세요." };
+  }
+  const occurredAt = new Date(`${visitDate}T12:00:00+09:00`);
+  if (!Number.isFinite(occurredAt.getTime()) || koreaDateKey(occurredAt) !== visitDate
+    || visitDate > koreaDateKey(new Date())) {
+    return { error: "올바른 방문일을 입력해 주세요." };
+  }
+  const db = supabase.schema("scheduler");
+  const { data: card, error: cardError } = await db.from("sales_business_cards")
+    .select("organization_id").eq("id", cardId).maybeSingle();
+  if (cardError || !card) return { error: "명함을 찾지 못했습니다. 목록에서 다시 선택해 주세요." };
+  const { data: organization, error: organizationError } = await db.from("sales_organizations")
+    .select("stage,next_action,next_action_type,next_action_at,next_contact_id").eq("id", card.organization_id).maybeSingle();
+  if (organizationError || !organization) return { error: "기관 정보를 불러오지 못했습니다." };
+  if (contactId) {
+    const { data: contact, error: contactError } = await db.from("sales_contacts")
+      .select("id").eq("id", contactId).eq("organization_id", card.organization_id).maybeSingle();
+    if (contactError || !contact) return { error: "이 기관의 담당자를 선택해 주세요." };
+  }
+  const { error } = await db.rpc("record_sales_activity", {
+    p_organization_id: card.organization_id,
+    p_contact_id: contactId || null,
+    p_activity_type: "visit",
+    p_reaction: "neutral",
+    p_summary: summary,
+    p_occurred_at: occurredAt.toISOString(),
+    p_follow_up_round: null,
+    p_follow_up_status: null,
+    p_next_action: organization.next_action,
+    p_next_action_type: organization.next_action_type,
+    p_next_action_at: organization.next_action_at,
+    p_next_contact_id: organization.next_contact_id,
+    p_stage: ["lead", "contacted"].includes(organization.stage) ? "meeting" : organization.stage,
+  });
+  if (error) return { error: "방문 기록을 저장하지 못했습니다. 다시 시도해 주세요." };
+  revalidatePath("/admin/sales");
+  revalidatePath(`/admin/sales/${card.organization_id}`);
+  redirect("/admin/sales?view=visits&saved=visit");
 }
 
 export async function createContact(data: FormData) {

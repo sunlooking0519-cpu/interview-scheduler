@@ -16,6 +16,7 @@ function load(path, imports) {
     createImageBitmap: imports.__createImageBitmap,
     require(name) {
       if (name === "@/server/calendar-sync" && !(name in imports)) return { scheduleCalendarSync() {} };
+      if (name === "@/features/admin/sales-follow-up" && !(name in imports)) return load("src/features/admin/sales-follow-up.ts", {});
       if (name === "@/server/resumes" && !(name in imports)) return {};
       if (!(name in imports)) throw new Error(`Unexpected import: ${name}`);
       return imports[name];
@@ -295,6 +296,41 @@ test("mobile card save confirms the inserted database card ID", async () => {
   assert.equal(result.error, "");
   assert.equal(result.cardId, cardId);
   assert.deepEqual(writes.map(({ table }) => table), ["sales_organizations", "sales_contacts", "sales_business_cards"]);
+});
+
+test("card visit records its contact and summary without clearing an existing next action", async () => {
+  const cardId = "11111111-1111-1111-1111-111111111111";
+  const organizationId = "22222222-2222-2222-2222-222222222222";
+  const contactId = "33333333-3333-3333-3333-333333333333";
+  let written;
+  const row = (data) => ({ select() { return { eq() { return { maybeSingle: async () => ({ data, error: null }), eq() { return { maybeSingle: async () => ({ data, error: null }) }; } }; } }; } });
+  const supabase = { schema() { return {
+    from(table) {
+      if (table === "sales_business_cards") return row({ organization_id: organizationId });
+      if (table === "sales_organizations") return row({ stage: "lead", next_action: "제안 메일 발송", next_action_type: "email", next_action_at: "2026-10-28T09:00:00Z", next_contact_id: contactId });
+      if (table === "sales_contacts") return row({ id: contactId });
+      throw new Error(`Unexpected table ${table}`);
+    },
+    rpc: async (name, args) => { assert.equal(name, "record_sales_activity"); written = args; return { error: null }; },
+  }; } };
+  const actions = load("src/app/admin/sales/actions.ts", {
+    "next/cache": { revalidatePath() {} }, "next/navigation": { redirect },
+    "@/server/admin-auth": { requireAdmin: async () => ({ user: admin, supabase }) },
+    "@/server/google-calendar": { getCalendarConnection: async () => null },
+  });
+  const data = new FormData();
+  data.set("card_id", cardId);
+  data.set("contact_id", contactId);
+  data.set("visit_date", "2026-10-20");
+  data.set("summary", "교육 대상과 예산을 상담했다.");
+  await assert.rejects(actions.recordCardVisit({ error: "" }, data), /REDIRECT:\/admin\/sales\?view=visits&saved=visit/);
+  assert.equal(written.p_organization_id, organizationId);
+  assert.equal(written.p_contact_id, contactId);
+  assert.equal(written.p_activity_type, "visit");
+  assert.equal(written.p_summary, "교육 대상과 예산을 상담했다.");
+  assert.equal(written.p_stage, "meeting");
+  assert.equal(written.p_next_action, "제안 메일 발송");
+  assert.equal(written.p_follow_up_round, null);
 });
 
 test("another business card at the same organization adds a contact without another organization card", async () => {

@@ -114,6 +114,7 @@ export default async function BusinessCardsPage({ searchParams }: {
               return value ? <div key={key} className="col-span-2 grid grid-cols-subgrid"><dt className="text-slate-500">{label}</dt><dd className="break-all text-slate-800">{value}</dd></div> : null;
             })}</dl>
             {organization && <Link href={`/admin/sales/${organization.id}`} className="mt-4 inline-flex rounded-lg border border-indigo-200 px-3 py-2 text-sm font-bold text-indigo-700">기관 상세 보기</Link>}
+            <Link href={`/admin/sales/cards/${businessCard.id}/visit`} className="mt-4 ml-2 inline-flex rounded-lg bg-indigo-600 px-3 py-2 text-sm font-bold text-white">방문·상담 기록</Link>
           </div>
         </article>;
       })}</div>
