@@ -38,9 +38,10 @@ function textField(fields: Record<string, unknown> | null, key: string) {
 }
 
 export default async function BusinessCardsPage({ searchParams }: {
-  searchParams: Promise<{ q?: string }>;
+  searchParams: Promise<{ q?: string | string[] }>;
 }) {
-  const { q = "" } = await searchParams;
+  const requestedQuery = (await searchParams).q;
+  const q = (Array.isArray(requestedQuery) ? requestedQuery[0] : requestedQuery) ?? "";
   const { supabase } = await requireAdmin();
   const db = supabase.schema("scheduler");
   const cardsResult = await db.from("sales_business_cards")
@@ -92,8 +93,8 @@ export default async function BusinessCardsPage({ searchParams }: {
 
     <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
       <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-        <div><h2 className="text-xl font-bold">등록된 명함 <span className="text-indigo-600">{visibleCards.length}</span></h2><p className="mt-1 text-sm text-slate-500">최신 등록 순으로 최대 300장을 표시합니다.</p></div>
-        <form className="flex min-w-0 gap-2"><input name="q" defaultValue={q} aria-label="명함 검색" placeholder="기관·이름·전화·이메일 검색" className="min-w-0 flex-1 rounded-xl border border-slate-300 px-3 py-2 md:w-72"/><button className="shrink-0 rounded-xl bg-slate-900 px-4 py-2 text-sm font-bold text-white">검색</button></form>
+        <div><h2 className="text-xl font-bold">등록된 명함 <span className="text-indigo-600">{cards.length}</span></h2><p className="mt-1 text-sm text-slate-500">{normalizedQuery ? `검색 결과 ${visibleCards.length}건 · ` : ""}최신 등록 순으로 최대 300장을 표시합니다.</p></div>
+        <form className="flex min-w-0 gap-2"><input name="q" defaultValue={q} aria-label="명함 검색" placeholder="기관·이름·전화·이메일 검색" className="min-w-0 flex-1 rounded-xl border border-slate-300 px-3 py-2 md:w-72"/><button className="shrink-0 rounded-xl bg-slate-900 px-4 py-2 text-sm font-bold text-white">검색</button>{normalizedQuery && <Link href="/admin/sales/cards" className="shrink-0 rounded-xl border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700">검색 초기화</Link>}</form>
       </div>
 
       <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{visibleCards.map((businessCard) => {
@@ -115,7 +116,7 @@ export default async function BusinessCardsPage({ searchParams }: {
           </div>
         </article>;
       })}</div>
-      {!loadError && !visibleCards.length && <div className="mt-5 rounded-xl bg-slate-50 p-8 text-center"><p className="font-semibold text-slate-700">{q ? "검색 결과가 없습니다." : "아직 등록된 명함이 없습니다."}</p><Link href="/admin/sales/cards/new" className="mt-3 inline-flex rounded-xl bg-indigo-600 px-4 py-2 text-sm font-bold text-white">첫 명함 등록</Link></div>}
+      {!loadError && !visibleCards.length && <div className="mt-5 rounded-xl bg-slate-50 p-8 text-center"><p className="font-semibold text-slate-700">{normalizedQuery ? "검색 결과가 없습니다." : "아직 등록된 명함이 없습니다."}</p><Link href={normalizedQuery ? "/admin/sales/cards" : "/admin/sales/cards/new"} className="mt-3 inline-flex rounded-xl bg-indigo-600 px-4 py-2 text-sm font-bold text-white">{normalizedQuery ? "전체 명함 보기" : "첫 명함 등록"}</Link></div>}
     </section>
   </div>;
 }

@@ -144,7 +144,7 @@ export default async function SalesPage({ searchParams }: {
           <div className="flex flex-wrap gap-2 md:max-w-[220px] md:justify-end">{phone && <a href={`tel:${phone.replace(/[^0-9+]/g, "")}`} className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-bold text-emerald-800">전화</a>}{contact?.email && <a href={`mailto:${contact.email}?subject=${mailSubject}`} className="rounded-lg border border-sky-300 bg-sky-50 px-3 py-2 text-sm font-bold text-sky-800">이메일</a>}<Link href={`/admin/sales/${organization.id}#quick-log`} className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-bold text-white">결과 기록</Link></div>
         </article>;
       })}</div>
-      {!loadError && !visibleOrganizations.length && <div className="mt-5 rounded-xl bg-slate-50 p-8 text-center"><p className="font-semibold text-slate-700">현재 조건에 맞는 2차 후속 대상이 없습니다.</p><p className="mt-1 text-sm text-slate-500">기관 상세에서 1차 후속 메일과 다음 연락 기한을 기록하면 여기에 표시됩니다.</p></div>}
+      {!loadError && !visibleOrganizations.length && <div className="mt-5 rounded-xl bg-slate-50 p-8 text-center"><p className="font-semibold text-slate-700">{view === "all" ? "현재 조건에 맞는 영업 대상이 없습니다." : "현재 조건에 맞는 2차 후속 대상이 없습니다."}</p><p className="mt-1 text-sm text-slate-500">{view === "all" ? "검색어와 진행 단계를 확인해 주세요." : "명함 등록만 완료한 기관은 1차 후속 메일을 기록하기 전까지 이 작업 큐에 표시되지 않습니다."}</p>{view !== "all" && <div className="mt-4 flex flex-wrap justify-center gap-2"><Link href="/admin/sales?view=all" className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700">전체 영업 대상 보기</Link><Link href="/admin/sales/cards" className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white">등록된 명함 보기</Link></div>}</div>}
     </section>
   </div>;
 }
