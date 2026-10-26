@@ -4,6 +4,7 @@ import android.app.AlertDialog;
 import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.SystemClock;
@@ -55,6 +56,7 @@ public final class MainActivity extends ComponentActivity {
     private TextView koreanText;
     private TextView latinText;
     private TextView mergedText;
+    private TextView saveStatus;
     private TextView accountStatus;
     private LinearLayout loginPanel;
     private EditText organizationInput;
@@ -79,6 +81,7 @@ public final class MainActivity extends ComponentActivity {
         koreanText = findViewById(R.id.koreanText);
         latinText = findViewById(R.id.latinText);
         mergedText = findViewById(R.id.mergedText);
+        saveStatus = findViewById(R.id.saveStatusText);
         organizationInput = findViewById(R.id.organizationInput);
         nameInput = findViewById(R.id.nameInput);
         titleInput = findViewById(R.id.titleInput);
@@ -117,6 +120,7 @@ public final class MainActivity extends ComponentActivity {
 
     private void startScan() {
         status.setText(R.string.status_preparing);
+        showSaveMessage(getString(R.string.save_ready), false);
         GmsDocumentScannerOptions options = new GmsDocumentScannerOptions.Builder()
             .setGalleryImportAllowed(true)
             .setPageLimit(1)
@@ -259,25 +263,38 @@ public final class MainActivity extends ComponentActivity {
     }
 
     private void saveCard() {
-        if (scannedImage == null) { status.setText(R.string.save_image_required); return; }
-        if (!mobileApi.hasSavedSession()) { status.setText(R.string.login_required); return; }
+        if (scannedImage == null) { showSaveMessage(getString(R.string.save_image_required), true); return; }
+        if (!mobileApi.hasSavedSession()) { showSaveMessage(getString(R.string.login_required), true); return; }
         String organization = organizationInput.getText().toString().trim();
         String name = nameInput.getText().toString().trim();
-        if (organization.isEmpty() || name.isEmpty()) { status.setText(R.string.save_fields_required); return; }
+        if (organization.isEmpty() || name.isEmpty()) { showSaveMessage(getString(R.string.save_fields_required), true); return; }
         String[] kinds = { "institution", "school", "other" };
         int kindIndex = ((Spinner) findViewById(R.id.kindInput)).getSelectedItemPosition();
         busy = true;
         setButtonsEnabled(false);
-        status.setText(R.string.save_working);
+        showSaveMessage(getString(R.string.save_working), false);
         mobileApi.save(scannedImage, organization, kinds[kindIndex], name, titleInput.getText().toString().trim(),
             phoneInput.getText().toString().trim(), mobileInput.getText().toString().trim(),
-            emailInput.getText().toString().trim(), mergedText.getText().toString(), error -> {
-                busy = false;
-                status.setText(error.isEmpty() ? getString(R.string.save_complete) : error);
-                if (error.isEmpty()) scannedImage = null;
-                showAccountState();
-                setButtonsEnabled(true);
+            emailInput.getText().toString().trim(), mergedText.getText().toString(), new MobileApi.SaveCallback() {
+                @Override public void progress(int messageId) { showSaveMessage(getString(messageId), false); }
+                @Override public void done(String error, String cardId) {
+                    busy = false;
+                    if (error.isEmpty()) {
+                        showSaveMessage(getString(R.string.save_confirmed,
+                            cardId.length() > 8 ? cardId.substring(0, 8) : cardId), false);
+                        scannedImage = null;
+                    } else {
+                        showSaveMessage(getString(R.string.save_failed, error), true);
+                    }
+                    showAccountState();
+                    setButtonsEnabled(true);
+                }
             });
+    }
+
+    private void showSaveMessage(String message, boolean failure) {
+        saveStatus.setText(message);
+        saveStatus.setTextColor(failure ? Color.rgb(185, 28, 28) : Color.rgb(49, 46, 129));
     }
 
     private void retryRegion() {
@@ -361,7 +378,9 @@ public final class MainActivity extends ComponentActivity {
         findViewById(R.id.loginButton).setEnabled(enabled && !busy);
         findViewById(R.id.retryAccountButton).setEnabled(enabled && !busy);
         findViewById(R.id.logoutButton).setEnabled(enabled && !busy);
-        findViewById(R.id.saveButton).setEnabled(enabled && !busy && !accountChecking && scannedImage != null);
+        Button saveButton = findViewById(R.id.saveButton);
+        saveButton.setEnabled(enabled && !busy && !accountChecking && scannedImage != null);
+        saveButton.setText(busy ? R.string.save_working : R.string.save_button);
         findViewById(R.id.retryRegionButton).setEnabled(enabled && !busy && scannedImage != null);
     }
 

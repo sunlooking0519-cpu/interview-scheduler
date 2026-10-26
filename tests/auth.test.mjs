@@ -271,6 +271,32 @@ test("new sales lead links the organization, contact and private business card",
   assert.equal(writes[2].row.image_path, input.imagePath);
 });
 
+test("mobile card save confirms the inserted database card ID", async () => {
+  const organizationId = "12345678-1234-1234-1234-123456789abc";
+  const cardId = "33333333-3333-3333-3333-333333333333";
+  const writes = [];
+  const supabase = { schema() { return {
+    rpc: async () => ({ data: null, error: null }),
+    from(table) { return { insert(row) {
+      writes.push({ table, row });
+      if (table === "sales_contacts") return { select() { return { async single() { return { data: { id: "contact-id" }, error: null }; } }; } };
+      if (table === "sales_business_cards") return { select() { return { async single() { return { data: { id: cardId }, error: null }; } }; } };
+      return Promise.resolve({ error: null });
+    } }; },
+  }; } };
+  const { saveSalesCard } = load("src/server/sales-card-create.ts", {
+    "server-only": {}, "next/cache": { revalidatePath() {} },
+  });
+  const result = await saveSalesCard(supabase, admin, {
+    organizationId, name: "한빛대학교", kind: "school",
+    contact: { name: "김민수", title: "팀장", phone: "", mobile: "010-1234-5678", email: "" },
+    imagePath: `${organizationId}/11111111-1111-1111-1111-111111111111.jpg`, ocrText: "김민수",
+  });
+  assert.equal(result.error, "");
+  assert.equal(result.cardId, cardId);
+  assert.deepEqual(writes.map(({ table }) => table), ["sales_organizations", "sales_contacts", "sales_business_cards"]);
+});
+
 test("another business card at the same organization adds a contact without another organization card", async () => {
   const proposedId = "12345678-1234-1234-1234-123456789abc";
   const existingId = "22222222-2222-2222-2222-222222222222";

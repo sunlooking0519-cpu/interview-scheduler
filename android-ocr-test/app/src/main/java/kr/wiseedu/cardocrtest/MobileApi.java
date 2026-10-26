@@ -13,6 +13,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
@@ -33,6 +34,10 @@ final class MobileApi {
     private String accountEmail = "";
 
     interface Callback { void done(String error); }
+    interface SaveCallback {
+        void progress(int messageId);
+        void done(String error, String cardId);
+    }
 
     MobileApi(Context context) {
         this.context = context.getApplicationContext();
@@ -89,18 +94,21 @@ final class MobileApi {
         });
     }
 
-    void save(Uri image, String organization, String kind, String name, String title, String phone, String mobile, String email, String ocrText, Callback callback) {
+    void save(Uri image, String organization, String kind, String name, String title, String phone, String mobile, String email, String ocrText, SaveCallback callback) {
         worker.execute(() -> {
             String error = "";
             String path = "";
+            String cardId = "";
             boolean saveRequestStarted = false;
             boolean confirmedFailure = false;
             try {
                 ensureSession();
+                postProgress(callback, R.string.save_uploading);
                 byte[] bytes = readImage(image);
                 String organizationId = UUID.randomUUID().toString();
                 path = organizationId + "/" + UUID.randomUUID() + ".jpg";
                 callWithRefresh("POST", storageUrl + "/" + path, bytes, "image/jpeg", true);
+                postProgress(callback, R.string.save_writing);
                 JSONObject contact = new JSONObject().put("name", name).put("title", title).put("phone", phone)
                     .put("mobile", mobile).put("email", email).put("role", "");
                 JSONObject body = new JSONObject().put("organizationId", organizationId).put("name", organization)
@@ -108,19 +116,46 @@ final class MobileApi {
                 saveRequestStarted = true;
                 JSONObject saved = callWithRefresh("POST", SITE + "/api/mobile/cards", body.toString().getBytes(StandardCharsets.UTF_8), "application/json", false);
                 if (!saved.optString("error").isEmpty()) throw new IOException(saved.getString("error"));
+                cardId = saved.optString("cardId");
+                if (cardId.isEmpty()) throw new IOException("DB 저장 확인번호가 없습니다.");
                 path = "";
             } catch (Exception failure) {
                 error = message(failure);
                 confirmedFailure = failure instanceof ApiException && ((ApiException) failure).status < 500;
-            }
-            // A connection loss after the save request leaves its result unknown; preserve the image.
-            if (!path.isEmpty() && (!saveRequestStarted || confirmedFailure)) {
-                try { callWithRefresh("DELETE", storageUrl + "/" + path, null, "application/json", true); }
-                catch (Exception ignored) { /* The uploaded file can be removed from Storage by an administrator. */ }
+                if (saveRequestStarted && !confirmedFailure) {
+                    postProgress(callback, R.string.save_verifying);
+                    try {
+                        String query = URLEncoder.encode(path, StandardCharsets.UTF_8.name());
+                        JSONObject check = callWithRefresh("GET", SITE + "/api/mobile/cards?imagePath=" + query,
+                            null, "application/json", false);
+                        String confirmedId = check.optString("cardId");
+                        if (check.optBoolean("found") && !confirmedId.isEmpty()) {
+                            cardId = confirmedId;
+                            path = "";
+                            error = "";
+                        } else {
+                            error = context.getString(R.string.save_uncertain);
+                        }
+                    } catch (Exception checkFailure) { error = context.getString(R.string.save_uncertain); }
+                }
             }
             String result = error;
-            main.post(() -> callback.done(result));
+            String savedId = cardId;
+            main.post(() -> callback.done(result, savedId));
+            // A connection loss after the save request leaves its result unknown; preserve the image.
+            if (!path.isEmpty() && (!saveRequestStarted || confirmedFailure)) {
+                try {
+                    JSONObject cleanup = new JSONObject().put("imagePath", path);
+                    callWithRefresh("DELETE", SITE + "/api/mobile/cards", cleanup.toString().getBytes(StandardCharsets.UTF_8),
+                        "application/json", false);
+                }
+                catch (Exception ignored) { /* The uploaded file can be removed from Storage by an administrator. */ }
+            }
         });
+    }
+
+    private void postProgress(SaveCallback callback, int messageId) {
+        main.post(() -> callback.progress(messageId));
     }
 
     private byte[] readImage(Uri image) throws IOException {
@@ -215,7 +250,12 @@ final class MobileApi {
                 while ((read = stream.read(chunk)) != -1 && buffer.size() < 30000) buffer.write(chunk, 0, read);
                 text = buffer.toString(StandardCharsets.UTF_8.name());
             }
-            JSONObject json = text.isEmpty() ? new JSONObject() : new JSONObject(text);
+            JSONObject json;
+            try { json = text.isEmpty() ? new JSONObject() : new JSONObject(text); }
+            catch (org.json.JSONException malformed) {
+                if (status >= 400) throw new ApiException(status, "서버 오류 (HTTP " + status + ")");
+                throw new IOException("서버 응답을 읽지 못했습니다. (HTTP " + status + ")", malformed);
+            }
             if (status >= 400) throw new ApiException(status, json.optString("error", json.optString("message", "서버 오류 " + status)));
             return json;
         } finally { connection.disconnect(); }
