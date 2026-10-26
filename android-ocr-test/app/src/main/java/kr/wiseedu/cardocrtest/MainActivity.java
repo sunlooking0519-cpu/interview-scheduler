@@ -5,6 +5,7 @@ import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
+import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.SystemClock;
@@ -91,6 +92,13 @@ public final class MainActivity extends ComponentActivity {
         accountStatus = findViewById(R.id.accountStatusText);
         loginPanel = findViewById(R.id.loginPanel);
         mobileApi = new MobileApi(this);
+        try {
+            String version = getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
+            ((TextView) findViewById(R.id.installedVersionText)).setText(
+                getString(R.string.installed_version, version == null ? "?" : version));
+        } catch (PackageManager.NameNotFoundException ignored) {
+            // Keep the placeholder if Android cannot read this package's version.
+        }
 
         findViewById(R.id.scanButton).setOnClickListener(view -> startScan());
         findViewById(R.id.loginButton).setOnClickListener(view -> login());

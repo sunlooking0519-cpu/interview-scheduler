@@ -77,10 +77,20 @@
                 android:textStyle="bold" />
 
             <TextView
-                android:id="@+id/updateStatusText"
+                android:id="@+id/installedVersionText"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="10dp"
+                android:text="@string/installed_version_unknown"
+                android:textColor="#334155"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/updateStatusText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
                 android:accessibilityLiveRegion="polite"
                 android:text="@string/update_checking"
                 android:textColor="#475569"
