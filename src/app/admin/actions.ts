@@ -26,8 +26,15 @@ export async function loginAdmin(
     if (error?.code === "over_request_rate_limit") {
       return { error: "로그인 시도가 너무 많습니다. 잠시 후 다시 시도해 주세요." };
     }
+    if (error?.code === "user_banned") {
+      return { error: "이 계정은 현재 로그인이 제한되어 있습니다. 최고관리자에게 문의해 주세요. (user_banned)" };
+    }
+    if (error?.code && error.code !== "invalid_credentials") {
+      const code = /^[a-z0-9_]{1,64}$/.test(error.code) ? error.code : "unknown";
+      return { error: `인증 서비스가 로그인을 거절했습니다. 최고관리자에게 오류 코드를 알려주세요. (${code})` };
+    }
     if (error || !data.user || !data.session) {
-      return { error: "이메일 또는 비밀번호가 올바르지 않습니다." };
+      return { error: "이메일 또는 비밀번호가 올바르지 않습니다. (invalid_credentials)" };
     }
     if (!isInterviewStaff(data.user)) {
       await supabase.auth.signOut({ scope: "local" });

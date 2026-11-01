@@ -1018,13 +1018,19 @@ test("valid administrator credentials return success for client navigation", asy
 
 test("invalid credentials display an error without redirect", async () => {
   const { loginAdmin } = actions({ signInWithPassword: async () => ({ data: { user: null }, error: { message: "invalid" } }) });
-  assert.equal((await loginAdmin({ error: "" }, credentials())).error, "이메일 또는 비밀번호가 올바르지 않습니다.");
+  assert.equal((await loginAdmin({ error: "" }, credentials())).error, "이메일 또는 비밀번호가 올바르지 않습니다. (invalid_credentials)");
 });
 
 test("unconfirmed legacy instructor account shows the actual sign-in blocker", async () => {
   const { loginAdmin } = actions({ signInWithPassword: async () => ({ data: { user: null, session: null }, error: { code: "email_not_confirmed" } }) });
   const form = new FormData(); form.set("email", "teacher@example.com"); form.set("password", "correct-password");
   assert.match((await loginAdmin({ error: "" }, form)).error, /이메일 확인 상태/);
+});
+
+test("admin login exposes a safe Supabase code for non-password auth failures", async () => {
+  const { loginAdmin } = actions({ signInWithPassword: async () => ({ data: { user: null, session: null }, error: { code: "email_provider_disabled" } }) });
+  const form = new FormData(); form.set("email", "teacher@example.com"); form.set("password", "correct-password");
+  assert.match((await loginAdmin({ error: "" }, form)).error, /email_provider_disabled/);
 });
 
 test("ordinary account login is signed out and denied", async () => {
