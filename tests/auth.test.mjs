@@ -76,6 +76,25 @@ test("sales dashboard prioritizes overdue follow-ups and distinguishes activity 
   assert.equal(result.events.find((event) => event.id === "next:late").type, "due");
 });
 
+test("all sales organizations sort by saved update time and retain the latest recorded statuses", () => {
+  const { buildSalesOrganizationList } = load("src/features/admin/sales-organization-list.ts", {});
+  const organizations = [
+    { id: "a", name: "가 기관", updated_at: "2026-11-01T00:00:00Z" },
+    { id: "b", name: "나 기관", updated_at: "2026-11-01T01:00:00Z" },
+    { id: "c", name: "다 기관", updated_at: "2026-11-01T02:00:00Z" },
+  ];
+  const activities = [
+    { organization_id: "a", created_at: "2026-11-01T04:00:00Z", reaction: "reviewing", proposal_status: null },
+    { organization_id: "a", created_at: "2026-11-01T03:00:00Z", reaction: "interested", proposal_status: "submitted" },
+  ];
+  const rows = buildSalesOrganizationList(organizations, activities);
+  assert.equal(rows.map((row) => row.id).join(","), "a,c,b");
+  assert.equal(rows[0].lastUpdatedAt, "2026-11-01T04:00:00Z");
+  assert.equal(rows[0].reaction, "reviewing");
+  assert.equal(rows[0].proposalStatus, "submitted");
+  assert.equal(rows[1].proposalStatus, null);
+});
+
 test("dashboard counts only reservations whose interview time has not passed in Korea", () => {
   const { getUpcomingReservationStats } = load("src/features/admin/reservation-stats.ts", {});
   const now = new Date("2026-10-18T10:00:00+09:00");

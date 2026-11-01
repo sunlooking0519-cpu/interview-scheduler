@@ -2,7 +2,8 @@ import Link from "next/link";
 import { requireAdmin } from "@/server/admin-auth";
 import { retrySalesCalendarSync } from "./actions";
 import { SalesDashboard } from "@/features/admin/components/sales-dashboard";
-import type { DashboardActivity, DashboardCard, DashboardContact, DashboardOrganization } from "@/features/admin/sales-dashboard-model";
+import type { DashboardActivity } from "@/features/admin/sales-dashboard-model";
+import { buildSalesOrganizationList, type SalesOrganizationRow, type SalesStatusActivity } from "@/features/admin/sales-organization-list";
 import {
   elapsedDays,
   followUpStatusLabels,
@@ -61,30 +62,46 @@ export default async function SalesPage({ searchParams }: {
   const { supabase } = await requireAdmin();
   const { q = "", stage = "", view = "visits", sync = "", saved = "" } = await searchParams;
   const db = supabase.schema("scheduler");
+  if (view === "visits") {
+    const allOrganizations: SalesOrganizationRow[] = [];
+    const allActivities: (DashboardActivity & SalesStatusActivity)[] = [];
+    let loadError = false;
+    for (let offset = 0; ; offset += 1000) {
+      const result = await db.from("sales_organizations")
+        .select("id,name,updated_at")
+        .order("updated_at", { ascending: false }).order("id").range(offset, offset + 999);
+      if (result.error) { loadError = true; break; }
+      const batch = (result.data ?? []) as SalesOrganizationRow[];
+      allOrganizations.push(...batch);
+      if (batch.length < 1000) break;
+    }
+    let hasProposalStatus = true;
+    for (let offset = 0; ; offset += 1000) {
+      const columns = `id,organization_id,contact_id,activity_type,occurred_at,created_at,summary,follow_up_round,reaction${hasProposalStatus ? ",proposal_status" : ""}`;
+      const result = await db.from("sales_activities").select(columns)
+        .order("created_at", { ascending: false }).order("id", { ascending: false }).range(offset, offset + 999);
+      if (result.error && hasProposalStatus && ["42703", "PGRST204"].includes(result.error.code)) {
+        hasProposalStatus = false;
+        offset = -1000;
+        continue;
+      }
+      if (result.error) { loadError = true; break; }
+      const batch = (result.data ?? []) as unknown as (DashboardActivity & SalesStatusActivity)[];
+      allActivities.push(...batch);
+      if (batch.length < 1000) break;
+    }
+    const rows = buildSalesOrganizationList(allOrganizations, allActivities);
+    return <SalesDashboard
+      organizations={rows}
+      recentActivities={allActivities.slice(0, 15)}
+      query={q} saved={saved} loadError={loadError}
+    />;
+  }
   const { data, error } = await db.from("sales_organizations")
     .select("id,name,kind,stage,priority,region,address,next_action,next_action_type,next_action_at,next_contact_id,last_contact_at,last_follow_up_round,follow_up_status,updated_at")
     .order("updated_at", { ascending: false }).limit(300);
   const organizations = (data ?? []) as Organization[];
   const ids = organizations.map((organization) => organization.id);
-  if (view === "visits") {
-    const today = koreaDateKey(new Date());
-    const empty = Promise.resolve({ data: [], error: null });
-    const [cardsResult, contactsResult, visitsResult, recentResult] = await Promise.all([
-      ids.length ? db.from("sales_business_cards").select("id,organization_id,contact_id,created_at").in("organization_id", ids).order("created_at", { ascending: false }).limit(3000) : empty,
-      ids.length ? db.from("sales_contacts").select("id,organization_id,name,title,phone,mobile,email").in("organization_id", ids).order("created_at", { ascending: true }).limit(3000) : empty,
-      ids.length ? db.from("sales_activities").select("id,organization_id,contact_id,activity_type,occurred_at,created_at,summary,follow_up_round").in("organization_id", ids).eq("activity_type", "visit").order("occurred_at", { ascending: false }).limit(3000) : empty,
-      ids.length ? db.from("sales_activities").select("id,organization_id,contact_id,activity_type,occurred_at,created_at,summary,follow_up_round").in("organization_id", ids).order("created_at", { ascending: false }).limit(15) : empty,
-    ]);
-    return <SalesDashboard
-      organizations={organizations as DashboardOrganization[]}
-      contacts={(contactsResult.data ?? []) as DashboardContact[]}
-      cards={(cardsResult.data ?? []) as DashboardCard[]}
-      visits={(visitsResult.data ?? []) as DashboardActivity[]}
-      recentActivities={(recentResult.data ?? []) as DashboardActivity[]}
-      today={today} saved={saved}
-      loadError={Boolean(error || cardsResult.error || contactsResult.error || visitsResult.error || recentResult.error)}
-    />;
-  }
   const [contactsResult, firstFollowUpsResult] = ids.length ? await Promise.all([
     db.from("sales_contacts").select("id,organization_id,name,title,phone,mobile,email").in("organization_id", ids).order("created_at", { ascending: true }).limit(3000),
     db.from("sales_activities").select("organization_id,occurred_at,reaction").in("organization_id", ids).eq("follow_up_round", 1).eq("activity_type", "email").order("occurred_at", { ascending: false }).limit(3000),
