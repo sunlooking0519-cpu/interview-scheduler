@@ -57,14 +57,15 @@ type FirstFollowUp = {
 };
 
 export default async function SalesPage({ searchParams }: {
-  searchParams: Promise<{ q?: string; stage?: string; view?: string; sync?: string; saved?: string }>;
+  searchParams: Promise<{ q?: string; category?: string; region?: string; contact?: string; stage?: string; view?: string; sync?: string; saved?: string }>;
 }) {
   const { supabase } = await requireAdmin();
-  const { q = "", stage = "", view = "visits", sync = "", saved = "" } = await searchParams;
+  const { q = "", category = "", region = "", contact = "", stage = "", view = "visits", sync = "", saved = "" } = await searchParams;
   const db = supabase.schema("scheduler");
   if (view === "visits") {
     const allOrganizations: SalesOrganizationRow[] = [];
     const allActivities: (DashboardActivity & SalesStatusActivity)[] = [];
+    const contactNames: Record<string, string[]> = {};
     let loadError = false;
     for (let offset = 0; ; offset += 1000) {
       const result = await db.from("sales_organizations")
@@ -90,11 +91,21 @@ export default async function SalesPage({ searchParams }: {
       allActivities.push(...batch);
       if (batch.length < 1000) break;
     }
+    for (let offset = 0; ; offset += 1000) {
+      const result = await db.from("sales_contacts")
+        .select("organization_id,name")
+        .order("created_at", { ascending: true }).order("id").range(offset, offset + 999);
+      if (result.error) { loadError = true; break; }
+      const batch = (result.data ?? []) as { organization_id: string; name: string }[];
+      for (const item of batch) (contactNames[item.organization_id] ??= []).push(item.name);
+      if (batch.length < 1000) break;
+    }
     const rows = buildSalesOrganizationList(allOrganizations, allActivities);
     return <SalesDashboard
       organizations={rows}
       recentActivities={allActivities.slice(0, 15)}
-      query={q} saved={saved} loadError={loadError} today={koreaDateKey(new Date())}
+      contactNames={contactNames} query={q} category={category} region={region} contact={contact}
+      saved={saved} loadError={loadError} today={koreaDateKey(new Date())}
     />;
   }
   const { data, error } = await db.from("sales_organizations")

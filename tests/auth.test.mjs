@@ -100,6 +100,35 @@ test("all sales organizations sort by saved update time and retain the latest re
   assert.equal(rows[1].proposalStatus, null);
 });
 
+test("sales organization filters combine institution type, region aliases, and contact name", () => {
+  const followUp = load("src/features/admin/sales-follow-up.ts", {});
+  const { salesOrganizationCategory, salesRegionGroup, filterSalesOrganizationList } = load(
+    "src/features/admin/sales-organization-list.ts", { "./sales-follow-up": followUp },
+  );
+  assert.equal(salesOrganizationCategory("전주시립도서관"), "library");
+  assert.equal(salesOrganizationCategory("순천대학교 대학일자리센터"), "university");
+  assert.equal(salesOrganizationCategory("광주청소년문화의집"), "youth");
+  assert.equal(salesOrganizationCategory("강진군청 교육지원과"), "municipal");
+  assert.equal(salesOrganizationCategory("화순교육지원청"), "education");
+  assert.equal(salesOrganizationCategory("문화재단"), "other");
+  assert.equal(salesRegionGroup("전주"), "전북");
+  assert.equal(salesRegionGroup("경기도 광주시"), "경기");
+  assert.equal(salesRegionGroup("", "서울특별시교육청"), "서울");
+  const rows = [
+    { id: "a", name: "전주시립도서관", contactRegion: "전주" },
+    { id: "b", name: "광주서구도서관", contactRegion: "광주" },
+    { id: "c", name: "전북대학교", contactRegion: "전북" },
+  ];
+  const contacts = { a: ["이예린"], b: ["김지수"], c: ["이정민"] };
+  const matches = filterSalesOrganizationList(rows, contacts, {
+    query: "도서관", category: "library", region: "전북", contact: "예린",
+  });
+  assert.equal(matches.map((row) => row.id).join(","), "a");
+  assert.equal(filterSalesOrganizationList(rows, contacts, {
+    query: "", category: "", region: "", contact: "이",
+  }).map((row) => row.id).join(","), "a,c");
+});
+
 test("dashboard counts only reservations whose interview time has not passed in Korea", () => {
   const { getUpcomingReservationStats } = load("src/features/admin/reservation-stats.ts", {});
   const now = new Date("2026-10-18T10:00:00+09:00");

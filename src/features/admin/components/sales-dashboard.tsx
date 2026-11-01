@@ -1,6 +1,9 @@
 import Link from "next/link";
 import type { DashboardActivity } from "../sales-dashboard-model";
-import type { SalesOrganizationListRow } from "../sales-organization-list";
+import {
+  filterSalesOrganizationList, organizationCategoryOptions, salesRegionOptions,
+  type SalesOrganizationListRow,
+} from "../sales-organization-list";
 import { OrganizationFollowUpDialog } from "./organization-follow-up-dialog";
 
 const workflow = [
@@ -15,13 +18,15 @@ const activityLabels: Record<string, string> = { visit: "접촉", call: "전화"
 const dateTimeFormatter = new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
 const dateFormatter = new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit" });
 
-export function SalesDashboard({ organizations, recentActivities, query, saved, loadError, today }: {
+export function SalesDashboard({ organizations, recentActivities, contactNames, query, category, region, contact, saved, loadError, today }: {
   organizations: SalesOrganizationListRow[];
   recentActivities: DashboardActivity[];
-  query: string; saved: string; loadError: boolean; today: string;
+  contactNames: Record<string, string[]>;
+  query: string; category: string; region: string; contact: string;
+  saved: string; loadError: boolean; today: string;
 }) {
-  const normalizedQuery = query.trim().toLocaleLowerCase("ko-KR");
-  const visible = normalizedQuery ? organizations.filter((item) => item.name.toLocaleLowerCase("ko-KR").includes(normalizedQuery)) : organizations;
+  const visible = filterSalesOrganizationList(organizations, contactNames, { query, category, region, contact });
+  const hasFilters = Boolean(query.trim() || category || region || contact.trim());
   const organizationById = new Map(organizations.map((item) => [item.id, item]));
   return <div className="space-y-6">
     <header className="rounded-3xl bg-gradient-to-br from-slate-950 via-indigo-950 to-indigo-700 p-6 text-white sm:p-8">
@@ -37,9 +42,17 @@ export function SalesDashboard({ organizations, recentActivities, query, saved, 
       <ol className="mt-5 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">{workflow.map(([title, detail], index) => <li key={title} className={`rounded-xl border p-4 ${index === 0 ? "border-indigo-300 bg-indigo-50" : "border-slate-200 bg-slate-50"}`}><span className="text-xs font-bold text-indigo-700">{index + 1}단계</span><h3 className="mt-1 font-bold">{title}</h3><p className="mt-1 text-xs leading-5 text-slate-600">{detail}</p>{index === 0 && <Link href="/admin/sales/cards" className="mt-3 inline-block text-xs font-bold text-indigo-700 underline">명함 목록 열기</Link>}</li>)}</ol>
     </section>
     <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white" aria-label="전체 기관 관리 목록">
-      <div className="flex flex-col gap-4 p-4 sm:flex-row sm:items-end sm:justify-between sm:p-6">
-        <div><h2 className="text-xl font-bold">전체 기관 <span className="text-indigo-600">{visible.length}</span></h2><p className="mt-1 text-sm text-slate-500">최근 관리 기록 순 · 최근 업데이트는 기록 저장일 기준</p></div>
-        <form action="/admin/sales" className="flex gap-2"><input name="q" defaultValue={query} aria-label="기관명 검색" placeholder="기관명 검색" className="min-w-0 flex-1 rounded-xl border border-slate-300 px-3 py-2 text-sm sm:w-56"/><button className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white">검색</button>{normalizedQuery && <Link href="/admin/sales" className="rounded-xl border px-3 py-2 text-sm font-semibold">초기화</Link>}</form>
+      <div className="p-4 sm:p-6">
+        <h2 className="text-xl font-bold">전체 기관 <span className="text-indigo-600">{visible.length}</span><span className="ml-2 text-sm font-normal text-slate-500">/ {organizations.length}개</span></h2>
+        <p className="mt-1 text-sm text-slate-500">최근 관리 기록 순 · 기관 유형과 지역을 함께 선택해 볼 수 있습니다.</p>
+        <form action="/admin/sales" className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(130px,1fr)_minmax(130px,1fr)_minmax(150px,1.2fr)_minmax(150px,1.2fr)_auto_auto] lg:items-end">
+          <label className="grid gap-1 text-xs font-semibold text-slate-600">기관 유형<select name="category" defaultValue={category} className="min-w-0 rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900"><option value="">전체 유형</option>{organizationCategoryOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+          <label className="grid gap-1 text-xs font-semibold text-slate-600">지역<select name="region" defaultValue={region} className="min-w-0 rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900"><option value="">전체 지역</option>{salesRegionOptions.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
+          <label className="grid gap-1 text-xs font-semibold text-slate-600">기관명<input name="q" defaultValue={query} placeholder="기관명 검색" className="min-w-0 rounded-xl border border-slate-300 px-3 py-2.5 text-sm text-slate-900"/></label>
+          <label className="grid gap-1 text-xs font-semibold text-slate-600">담당자<input name="contact" defaultValue={contact} placeholder="담당자 이름 검색" className="min-w-0 rounded-xl border border-slate-300 px-3 py-2.5 text-sm text-slate-900"/></label>
+          <button className="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white">적용</button>
+          {hasFilters && <Link href="/admin/sales" className="rounded-xl border border-slate-300 px-3 py-2.5 text-center text-sm font-semibold text-slate-700">초기화</Link>}
+        </form>
       </div>
       <div className="hidden grid-cols-[minmax(150px,2fr)_110px_120px_110px_100px_90px] gap-3 border-y bg-slate-50 px-6 py-3 text-xs font-bold text-slate-600 lg:grid"><span>기관명</span><span>방문일</span><span>최근 업데이트</span><span>제안서 제출</span><span>반응</span><span className="text-right">관리</span></div>
       <div className="divide-y divide-slate-100">{visible.map((item) => <article key={item.id} className="grid gap-3 px-4 py-4 hover:bg-slate-50 sm:px-6 lg:grid-cols-[minmax(150px,2fr)_110px_120px_110px_100px_90px] lg:items-center lg:gap-3">
@@ -50,7 +63,7 @@ export function SalesDashboard({ organizations, recentActivities, query, saved, 
         <div><span className="text-xs text-slate-500 lg:hidden">반응 · </span><span className="text-sm text-slate-700">{item.reaction ? reactionLabels[item.reaction] ?? item.reaction : "미기록"}</span></div>
         <div className="lg:text-right"><OrganizationFollowUpDialog organization={item} today={today} /></div>
       </article>)}</div>
-      {!loadError && !visible.length && <p className="p-8 text-center text-sm text-slate-500">{normalizedQuery ? "검색 결과가 없습니다." : "등록된 기관이 없습니다. 명함을 등록하면 여기에 표시됩니다."}</p>}
+      {!loadError && !visible.length && <p className="p-8 text-center text-sm text-slate-500">{hasFilters ? "조건에 맞는 기관이 없습니다. 필터를 바꿔보세요." : "등록된 기관이 없습니다. 명함을 등록하면 여기에 표시됩니다."}</p>}
     </section>
     <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6" aria-label="최근 영업 활동"><h2 className="text-xl font-bold">최근 활동</h2><p className="mt-1 text-sm text-slate-500">최근 기록한 순서입니다.</p><div className="mt-4 divide-y divide-slate-100">{recentActivities.map((activity) => <article key={activity.id} className="py-4 first:pt-0"><div className="flex flex-wrap items-center gap-2"><span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-600">{activityLabels[activity.activity_type] ?? "활동"}</span><Link href={`/admin/sales/${activity.organization_id}`} className="font-bold text-indigo-700 hover:underline">{organizationById.get(activity.organization_id)?.name ?? "기관"}</Link></div><p className="mt-1 line-clamp-2 whitespace-pre-wrap text-sm text-slate-700">{activity.summary}</p><p className="mt-1 text-xs text-slate-500">기록 {dateTimeFormatter.format(new Date(activity.created_at))}</p></article>)}</div>{!recentActivities.length && <p className="mt-4 rounded-xl bg-slate-50 p-5 text-sm text-slate-500">아직 활동 기록이 없습니다.</p>}</section>
   </div>;

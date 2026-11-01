@@ -22,6 +22,49 @@ export type SalesOrganizationListRow = SalesOrganizationRow & {
   reaction: string | null;
 };
 
+export const organizationCategoryOptions = [
+  ["library", "도서관"], ["university", "대학교"], ["youth", "청소년센터"],
+  ["municipal", "시군구청"], ["education", "교육기관"], ["other", "그외"],
+] as const;
+export const salesRegionOptions = ["전북", "광주", "서울", "대구", "부산", "대전", "경기"] as const;
+
+export function salesOrganizationCategory(name: string): string {
+  const compact = name.replace(/\s+/g, "");
+  if (/도서관/.test(compact)) return "library";
+  if (/대학교|대학|캠퍼스/.test(compact)) return "university";
+  if (/청소년|유스센터|유스호스텔/.test(compact)) return "youth";
+  if (/시청|군청|구청/.test(compact)) return "municipal";
+  if (/학교|교육청|교육지원청|교육원|교육센터|평생학습|학습관|교육기관/.test(compact)) return "education";
+  return "other";
+}
+
+export function salesRegionGroup(region: string, organizationName = ""): string | null {
+  const value = (region || organizationName).replace(/\s+/g, "");
+  if (/경기|경기도/.test(value)) return "경기";
+  if (/전북|전라북도|전북특별자치도|전주|군산|익산|남원|정읍|김제|완주|순창|고창|부안|무주|진안|장수|임실/.test(value)) return "전북";
+  if (/광주|광주광역시/.test(value)) return "광주";
+  if (/서울|서울특별시/.test(value)) return "서울";
+  if (/대구|대구광역시/.test(value)) return "대구";
+  if (/부산|부산광역시/.test(value)) return "부산";
+  if (/대전|대전광역시/.test(value)) return "대전";
+  return null;
+}
+
+export function filterSalesOrganizationList(
+  rows: SalesOrganizationListRow[],
+  contactNames: Record<string, string[]>,
+  filters: { query: string; category: string; region: string; contact: string },
+): SalesOrganizationListRow[] {
+  const query = filters.query.trim().toLocaleLowerCase("ko-KR");
+  const contact = filters.contact.trim().toLocaleLowerCase("ko-KR");
+  return rows.filter((row) =>
+    (!query || row.name.toLocaleLowerCase("ko-KR").includes(query))
+    && (!filters.category || salesOrganizationCategory(row.name) === filters.category)
+    && (!filters.region || salesRegionGroup(row.contactRegion, row.name) === filters.region)
+    && (!contact || (contactNames[row.id] ?? []).some((name) => name.toLocaleLowerCase("ko-KR").includes(contact)))
+  );
+}
+
 export function buildSalesOrganizationList(
   organizations: SalesOrganizationRow[], activities: SalesStatusActivity[],
 ): SalesOrganizationListRow[] {
