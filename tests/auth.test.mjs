@@ -379,6 +379,36 @@ test("card visit records its contact and summary without clearing an existing ne
   assert.equal(written.p_follow_up_round, null);
 });
 
+test("card visit popup sends structured details to the visit RPC", async () => {
+  let written;
+  const actions = load("src/app/admin/sales/actions.ts", {
+    "next/cache": { revalidatePath() {} }, "next/navigation": { redirect },
+    "@/server/admin-auth": { requireAdmin: async () => ({ supabase: { schema: () => ({ rpc: async (name, args) => {
+      assert.equal(name, "record_card_visit_details");
+      written = args;
+      return { error: null };
+    } }) } }) },
+    "@/server/google-calendar": { getCalendarConnection: async () => null },
+  });
+  const form = new FormData();
+  form.set("card_id", "11111111-1111-1111-1111-111111111111");
+  form.set("contact_id", "33333333-3333-3333-3333-333333333333");
+  form.set("visit_date", "2026-10-20");
+  form.set("visit_region", "광주 북구");
+  form.set("proposal_status", "planned");
+  form.set("reaction", "interested");
+  form.set("contact_method", "referral");
+  form.set("summary", "교육 대상과 예산을 상담했다.");
+  const result = await actions.recordCardVisitDetails({ error: "", saved: false }, form);
+  assert.equal(result.error, "");
+  assert.equal(result.saved, true);
+  assert.equal(written.p_visit_region, "광주 북구");
+  assert.equal(written.p_contact_method, "referral");
+  assert.equal(written.p_proposal_status, "planned");
+  form.set("visit_date", "2026-02-30");
+  assert.equal((await actions.recordCardVisitDetails({ error: "", saved: false }, form)).saved, false);
+});
+
 test("another business card at the same organization adds a contact without another organization card", async () => {
   const proposedId = "12345678-1234-1234-1234-123456789abc";
   const existingId = "22222222-2222-2222-2222-222222222222";

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { requireAdmin } from "@/server/admin-auth";
 import { retrySalesCalendarSync } from "./actions";
 import { SalesDashboard } from "@/features/admin/components/sales-dashboard";
-import type { DashboardActivity, DashboardCard, DashboardContact, DashboardMeeting, DashboardOrganization } from "@/features/admin/sales-dashboard-model";
+import type { DashboardActivity, DashboardCard, DashboardContact, DashboardOrganization } from "@/features/admin/sales-dashboard-model";
 import {
   elapsedDays,
   followUpStatusLabels,
@@ -56,10 +56,10 @@ type FirstFollowUp = {
 };
 
 export default async function SalesPage({ searchParams }: {
-  searchParams: Promise<{ q?: string; stage?: string; view?: string; sync?: string; saved?: string; month?: string; day?: string }>;
+  searchParams: Promise<{ q?: string; stage?: string; view?: string; sync?: string; saved?: string }>;
 }) {
   const { supabase } = await requireAdmin();
-  const { q = "", stage = "", view = "visits", sync = "", saved = "", month: requestedMonth, day: requestedDay } = await searchParams;
+  const { q = "", stage = "", view = "visits", sync = "", saved = "" } = await searchParams;
   const db = supabase.schema("scheduler");
   const { data, error } = await db.from("sales_organizations")
     .select("id,name,kind,stage,priority,region,address,next_action,next_action_type,next_action_at,next_contact_id,last_contact_at,last_follow_up_round,follow_up_status,updated_at")
@@ -68,21 +68,11 @@ export default async function SalesPage({ searchParams }: {
   const ids = organizations.map((organization) => organization.id);
   if (view === "visits") {
     const today = koreaDateKey(new Date());
-    const month = requestedMonth && /^(20\d{2})-(0[1-9]|1[0-2])$/.test(requestedMonth) ? requestedMonth : today.slice(0, 7);
-    const [year, monthNumber] = month.split("-").map(Number);
-    const lastDay = new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
-    const selectedDay = requestedDay && requestedDay.startsWith(`${month}-`) && /^\d{4}-\d{2}-\d{2}$/.test(requestedDay) && Number(requestedDay.slice(-2)) >= 1 && Number(requestedDay.slice(-2)) <= lastDay
-      ? requestedDay : month === today.slice(0, 7) ? today : `${month}-01`;
-    const nextMonth = new Date(Date.UTC(year, monthNumber, 1)).toISOString().slice(0, 7);
-    const monthStart = new Date(`${month}-01T00:00:00+09:00`).toISOString();
-    const monthEnd = new Date(`${nextMonth}-01T00:00:00+09:00`).toISOString();
     const empty = Promise.resolve({ data: [], error: null });
-    const [cardsResult, contactsResult, visitsResult, activitiesResult, meetingsResult, recentResult] = await Promise.all([
+    const [cardsResult, contactsResult, visitsResult, recentResult] = await Promise.all([
       ids.length ? db.from("sales_business_cards").select("id,organization_id,contact_id,created_at").in("organization_id", ids).order("created_at", { ascending: false }).limit(3000) : empty,
       ids.length ? db.from("sales_contacts").select("id,organization_id,name,title,phone,mobile,email").in("organization_id", ids).order("created_at", { ascending: true }).limit(3000) : empty,
       ids.length ? db.from("sales_activities").select("id,organization_id,contact_id,activity_type,occurred_at,created_at,summary,follow_up_round").in("organization_id", ids).eq("activity_type", "visit").order("occurred_at", { ascending: false }).limit(3000) : empty,
-      ids.length ? db.from("sales_activities").select("id,organization_id,contact_id,activity_type,occurred_at,created_at,summary,follow_up_round").in("organization_id", ids).gte("occurred_at", monthStart).lt("occurred_at", monthEnd).order("occurred_at", { ascending: true }).limit(3000) : empty,
-      ids.length ? db.from("sales_meetings").select("id,organization_id,contact_id,title,starts_at,location,status").in("organization_id", ids).gte("starts_at", monthStart).lt("starts_at", monthEnd).order("starts_at", { ascending: true }).limit(3000) : empty,
       ids.length ? db.from("sales_activities").select("id,organization_id,contact_id,activity_type,occurred_at,created_at,summary,follow_up_round").in("organization_id", ids).order("created_at", { ascending: false }).limit(15) : empty,
     ]);
     return <SalesDashboard
@@ -90,11 +80,9 @@ export default async function SalesPage({ searchParams }: {
       contacts={(contactsResult.data ?? []) as DashboardContact[]}
       cards={(cardsResult.data ?? []) as DashboardCard[]}
       visits={(visitsResult.data ?? []) as DashboardActivity[]}
-      monthActivities={(activitiesResult.data ?? []) as DashboardActivity[]}
-      meetings={(meetingsResult.data ?? []) as DashboardMeeting[]}
       recentActivities={(recentResult.data ?? []) as DashboardActivity[]}
-      month={month} selectedDay={selectedDay} today={today} saved={saved}
-      loadError={Boolean(error || cardsResult.error || contactsResult.error || visitsResult.error || activitiesResult.error || meetingsResult.error || recentResult.error)}
+      today={today} saved={saved}
+      loadError={Boolean(error || cardsResult.error || contactsResult.error || visitsResult.error || recentResult.error)}
     />;
   }
   const [contactsResult, firstFollowUpsResult] = ids.length ? await Promise.all([

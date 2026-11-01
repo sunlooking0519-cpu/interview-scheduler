@@ -2,6 +2,8 @@ import Image from "next/image";
 import Link from "next/link";
 import { requireAdmin } from "@/server/admin-auth";
 import { BusinessCardRegistrationLauncher } from "@/features/admin/components/business-card-registration-launcher";
+import { CardVisitDialog } from "@/features/admin/components/card-visit-dialog";
+import { koreaDateKey } from "@/features/admin/sales-follow-up";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +17,7 @@ type BusinessCard = {
   created_at: string;
 };
 
-type Organization = { id: string; name: string };
+type Organization = { id: string; name: string; region: string | null };
 type Contact = { id: string; name: string; title: string | null; email: string | null; phone: string | null; mobile: string | null };
 
 const fieldLabels: Record<string, string> = {
@@ -50,9 +52,10 @@ export default async function BusinessCardsPage({ searchParams }: {
     .order("created_at", { ascending: false })
     .limit(300);
   const cards = (cardsResult.data ?? []) as BusinessCard[];
-  const [organizationsResult, contactsResult, signedResult] = await Promise.all([
-    db.from("sales_organizations").select("id,name").limit(1000),
+  const [organizationsResult, contactsResult, visitsResult, signedResult] = await Promise.all([
+    db.from("sales_organizations").select("id,name,region").limit(1000),
     db.from("sales_contacts").select("id,name,title,email,phone,mobile").limit(3000),
+    db.from("sales_activities").select("organization_id,contact_id").eq("activity_type", "visit").limit(3000),
     cards.length
       ? supabase.storage.from("sales-cards").createSignedUrls(cards.map((card) => card.image_path), 60 * 10)
       : Promise.resolve({ data: [], error: null }),
@@ -61,6 +64,8 @@ export default async function BusinessCardsPage({ searchParams }: {
   const contacts = (contactsResult.data ?? []) as Contact[];
   const organizationById = new Map(organizations.map((organization) => [organization.id, organization]));
   const contactById = new Map(contacts.map((contact) => [contact.id, contact]));
+  const visits = (visitsResult.data ?? []) as { organization_id: string; contact_id: string | null }[];
+  const visitedContacts = new Set(visits.map((visit) => `${visit.organization_id}:${visit.contact_id ?? ""}`));
   const signedUrlByPath = new Map((signedResult.data ?? []).flatMap((item) =>
     item.path && item.signedUrl ? [[item.path, item.signedUrl] as const] : []
   ));
@@ -80,12 +85,12 @@ export default async function BusinessCardsPage({ searchParams }: {
       ...Object.values(fields ?? {}).filter((value): value is string => typeof value === "string"),
     ].some((value) => value.toLocaleLowerCase("ko-KR").includes(normalizedQuery));
   });
-  const loadError = cardsResult.error || organizationsResult.error || contactsResult.error || signedResult.error;
+  const loadError = cardsResult.error || organizationsResult.error || contactsResult.error || visitsResult.error || signedResult.error;
 
   return <div className="space-y-6">
     <header className="rounded-3xl bg-gradient-to-br from-slate-950 via-indigo-950 to-indigo-700 p-6 text-white shadow-lg sm:p-8">
       <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
-        <div><p className="text-xs font-bold tracking-[0.22em] text-indigo-200">BUSINESS CARDS</p><h1 className="mt-3 text-3xl font-bold">명함 관리</h1><p className="mt-2 max-w-2xl text-sm leading-6 text-indigo-100">등록된 명함을 먼저 확인하고 기관·담당자 정보로 검색할 수 있습니다.</p></div>
+        <div><p className="text-xs font-bold tracking-[0.22em] text-indigo-200">BUSINESS CARDS</p><h1 className="mt-3 text-3xl font-bold">명함 관리</h1><p className="mt-2 max-w-2xl text-sm leading-6 text-indigo-100">명함을 선택해 방문일과 상담 내용을 바로 기록하세요.</p></div>
         <BusinessCardRegistrationLauncher />
       </div>
     </header>
@@ -103,18 +108,20 @@ export default async function BusinessCardsPage({ searchParams }: {
         const contact = businessCard.contact_id ? contactById.get(businessCard.contact_id) : undefined;
         const fields = businessCard.ocr_fields;
         const url = signedUrlByPath.get(businessCard.image_path) ?? "";
+        const recorded = visitedContacts.has(`${businessCard.organization_id}:${businessCard.contact_id ?? ""}`);
         return <article key={businessCard.id} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="flex aspect-[1.6/1] items-center justify-center bg-slate-100">
             {url ? <a href={url} target="_blank" rel="noopener noreferrer" className="h-full w-full"><Image src={url} alt={`${organization?.name ?? "등록된"} 명함`} width={720} height={450} unoptimized className="h-full w-full object-contain"/></a> : <p className="text-sm text-slate-500">이미지를 불러오지 못했습니다.</p>}
           </div>
           <div className="p-4">
             <div className="flex items-start justify-between gap-3"><div className="min-w-0"><h3 className="break-words font-bold text-slate-950">{organization?.name || textField(fields, "organization") || "기관명 미확인"}</h3><p className="mt-1 text-sm text-slate-600">{contact?.name || textField(fields, "name") || "담당자 미확인"}{(contact?.title || textField(fields, "title")) ? ` · ${contact?.title || textField(fields, "title")}` : ""}</p></div><span className="shrink-0 text-xs text-slate-400">{displayDate(businessCard.created_at)}</span></div>
+            <span className={`mt-3 inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${recorded ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>{recorded ? "상담 기록 완료" : "상담 기록 필요"}</span>
             <dl className="mt-3 grid grid-cols-[62px_minmax(0,1fr)] gap-x-2 gap-y-1 text-sm">{Object.entries(fieldLabels).map(([key, label]) => {
               const value = textField(fields, key);
               return value ? <div key={key} className="col-span-2 grid grid-cols-subgrid"><dt className="text-slate-500">{label}</dt><dd className="break-all text-slate-800">{value}</dd></div> : null;
             })}</dl>
-            {organization && <Link href={`/admin/sales/${organization.id}`} className="mt-4 inline-flex rounded-lg border border-indigo-200 px-3 py-2 text-sm font-bold text-indigo-700">기관 상세 보기</Link>}
-            <Link href={`/admin/sales/cards/${businessCard.id}/visit`} className="mt-4 ml-2 inline-flex rounded-lg bg-indigo-600 px-3 py-2 text-sm font-bold text-white">방문·상담 기록</Link>
+            <CardVisitDialog cardId={businessCard.id} contactId={businessCard.contact_id} organization={organization?.name || textField(fields, "organization") || "기관명 미확인"} contact={contact?.name || textField(fields, "name") || "담당자 미확인"} region={organization?.region ?? ""} today={koreaDateKey(new Date())} recorded={recorded} />
+            {organization && <Link href={`/admin/sales/${organization.id}`} className="mt-3 inline-flex rounded-lg border border-indigo-200 px-3 py-2 text-sm font-bold text-indigo-700">기관 상세 보기</Link>}
           </div>
         </article>;
       })}</div>
