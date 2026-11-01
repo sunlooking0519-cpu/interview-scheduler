@@ -1021,6 +1021,12 @@ test("invalid credentials display an error without redirect", async () => {
   assert.equal((await loginAdmin({ error: "" }, credentials())).error, "이메일 또는 비밀번호가 올바르지 않습니다.");
 });
 
+test("unconfirmed legacy instructor account shows the actual sign-in blocker", async () => {
+  const { loginAdmin } = actions({ signInWithPassword: async () => ({ data: { user: null, session: null }, error: { code: "email_not_confirmed" } }) });
+  const form = new FormData(); form.set("email", "teacher@example.com"); form.set("password", "correct-password");
+  assert.match((await loginAdmin({ error: "" }, form)).error, /이메일 확인 상태/);
+});
+
 test("ordinary account login is signed out and denied", async () => {
   let signedOut = false;
   const { loginAdmin } = actions({

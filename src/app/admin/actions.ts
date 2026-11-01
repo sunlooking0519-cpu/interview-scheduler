@@ -20,6 +20,12 @@ export async function loginAdmin(
   try {
     const supabase = await createClient();
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error?.code === "email_not_confirmed") {
+      return { error: "계정의 이메일 확인 상태가 남아 있습니다. 관리자에게 계정 상태를 확인해 달라고 요청해 주세요." };
+    }
+    if (error?.code === "over_request_rate_limit") {
+      return { error: "로그인 시도가 너무 많습니다. 잠시 후 다시 시도해 주세요." };
+    }
     if (error || !data.user || !data.session) {
       return { error: "이메일 또는 비밀번호가 올바르지 않습니다." };
     }
