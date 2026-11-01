@@ -4,6 +4,7 @@ node_modules/
 out/
 coverage/
 supabase/.temp/
+supabase/private/
 *.tsbuildinfo
 .env*
 !.env.example
