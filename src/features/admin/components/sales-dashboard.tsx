@@ -1,10 +1,8 @@
 import Link from "next/link";
 import type { DashboardActivity } from "../sales-dashboard-model";
-import {
-  filterSalesOrganizationList, organizationCategoryOptions, salesRegionOptions,
-  type SalesOrganizationListRow,
-} from "../sales-organization-list";
+import { filterSalesOrganizationList, type SalesOrganizationListRow } from "../sales-organization-list";
 import { OrganizationFollowUpDialog } from "./organization-follow-up-dialog";
+import { SalesOrganizationFilters } from "./sales-organization-filters";
 
 const workflow = [
   ["기관 방문", "명함 등록 · 상담 기록"], ["제안서 메일", "맞춤 자료 발송"],
@@ -41,18 +39,11 @@ export function SalesDashboard({ organizations, recentActivities, contactNames, 
       <h2 className="text-xl font-bold">영업 7단계</h2><p className="mt-1 text-sm text-slate-500">기관 방문부터 사후 관리까지 이어지는 업무 순서입니다.</p>
       <ol className="mt-5 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">{workflow.map(([title, detail], index) => <li key={title} className={`rounded-xl border p-4 ${index === 0 ? "border-indigo-300 bg-indigo-50" : "border-slate-200 bg-slate-50"}`}><span className="text-xs font-bold text-indigo-700">{index + 1}단계</span><h3 className="mt-1 font-bold">{title}</h3><p className="mt-1 text-xs leading-5 text-slate-600">{detail}</p>{index === 0 && <Link href="/admin/sales/cards" className="mt-3 inline-block text-xs font-bold text-indigo-700 underline">명함 목록 열기</Link>}</li>)}</ol>
     </section>
-    <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white" aria-label="전체 기관 관리 목록">
+    <section id="organizations" className="scroll-mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white" aria-label="전체 기관 관리 목록">
       <div className="p-4 sm:p-6">
         <h2 className="text-xl font-bold">전체 기관 <span className="text-indigo-600">{visible.length}</span><span className="ml-2 text-sm font-normal text-slate-500">/ {organizations.length}개</span></h2>
         <p className="mt-1 text-sm text-slate-500">최근 관리 기록 순 · 기관 유형과 지역을 함께 선택해 볼 수 있습니다.</p>
-        <form action="/admin/sales" className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(130px,1fr)_minmax(130px,1fr)_minmax(150px,1.2fr)_minmax(150px,1.2fr)_auto_auto] lg:items-end">
-          <label className="grid gap-1 text-xs font-semibold text-slate-600">기관 유형<select name="category" defaultValue={category} className="min-w-0 rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900"><option value="">전체 유형</option>{organizationCategoryOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-          <label className="grid gap-1 text-xs font-semibold text-slate-600">지역<select name="region" defaultValue={region} className="min-w-0 rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900"><option value="">전체 지역</option>{salesRegionOptions.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
-          <label className="grid gap-1 text-xs font-semibold text-slate-600">기관명<input name="q" defaultValue={query} placeholder="기관명 검색" className="min-w-0 rounded-xl border border-slate-300 px-3 py-2.5 text-sm text-slate-900"/></label>
-          <label className="grid gap-1 text-xs font-semibold text-slate-600">담당자<input name="contact" defaultValue={contact} placeholder="담당자 이름 검색" className="min-w-0 rounded-xl border border-slate-300 px-3 py-2.5 text-sm text-slate-900"/></label>
-          <button className="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white">적용</button>
-          {hasFilters && <Link href="/admin/sales" className="rounded-xl border border-slate-300 px-3 py-2.5 text-center text-sm font-semibold text-slate-700">초기화</Link>}
-        </form>
+        <SalesOrganizationFilters key={JSON.stringify([query, category, region, contact])} query={query} category={category} region={region} contact={contact} />
       </div>
       <div className="hidden grid-cols-[minmax(150px,2fr)_110px_120px_110px_100px_90px] gap-3 border-y bg-slate-50 px-6 py-3 text-xs font-bold text-slate-600 lg:grid"><span>기관명</span><span>방문일</span><span>최근 업데이트</span><span>제안서 제출</span><span>반응</span><span className="text-right">관리</span></div>
       <div className="divide-y divide-slate-100">{visible.map((item) => <article key={item.id} className="grid gap-3 px-4 py-4 hover:bg-slate-50 sm:px-6 lg:grid-cols-[minmax(150px,2fr)_110px_120px_110px_100px_90px] lg:items-center lg:gap-3">
