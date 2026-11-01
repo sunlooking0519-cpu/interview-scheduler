@@ -1,6 +1,6 @@
 "use server";
 
-import { requireAdmin } from "@/server/admin-auth";
+import { requireInterviewStaff } from "@/server/admin-auth";
 import { calendarConfig, getCalendarConnection, calendarAccessToken, googleRequest, googleCalendarListRequest, type GoogleEvent, type GoogleCalendarEntry, decryptToken } from "@/server/google-calendar";
 import { syncCalendarQueue } from "@/server/calendar-sync";
 import { createServiceClient } from "../../../lib/supabase/service";
@@ -9,7 +9,7 @@ import { revalidatePath } from "next/cache";
 export type CalendarMonth = { connected: boolean; canConnect: boolean; canDisconnect: boolean; events: { id: string; title: string; start: string; end: string; allDay: boolean; calendar: string }[]; calendars: string[]; account: string; pending: number; error: string };
 
 export async function getGoogleCalendarMonth(month: string): Promise<CalendarMonth> {
-  const { user } = await requireAdmin();
+  const { user } = await requireInterviewStaff();
   const empty: CalendarMonth = { connected: false, canConnect: false, canDisconnect: false, events: [], calendars: [], account: "", pending: 0, error: "" };
   if (!/^20\d{2}-(0[1-9]|1[0-2])$/.test(month)) return { ...empty, error: "조회할 월을 확인해 주세요." };
   try {
@@ -81,7 +81,7 @@ export async function getGoogleCalendarMonth(month: string): Promise<CalendarMon
 }
 
 export async function retryCalendarSync(): Promise<{ error: string }> {
-  await requireAdmin();
+  await requireInterviewStaff();
   try {
     const result = await syncCalendarQueue();
     return { error: result.failed ? "일부 예약의 동기화가 실패했습니다. 잠시 후 재시도해 주세요." : "" };
@@ -89,7 +89,7 @@ export async function retryCalendarSync(): Promise<{ error: string }> {
 }
 
 export async function disconnectGoogleCalendar(): Promise<{ error: string }> {
-  const { user } = await requireAdmin();
+  const { user } = await requireInterviewStaff();
   try {
     const connection = await getCalendarConnection();
     if (!connection || connection.owner_id !== user.id) return { error: "연결한 관리자만 해제할 수 있습니다." };

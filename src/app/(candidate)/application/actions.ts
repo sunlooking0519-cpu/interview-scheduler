@@ -7,7 +7,7 @@ import { ALL_TIMES } from "@/features/booking/time-slots";
 import { scheduleCalendarSync } from "@/server/calendar-sync";
 
 export type CandidateIdentity = { name: string; phone: string };
-export type CandidateReservation = { id: string | number; interview_date: string; interview_time: string; status: "confirmed" | "cancelled" };
+export type CandidateReservation = { id: string | number; interview_date: string; interview_time: string; status: "confirmed" | "cancelled" | "hired" };
 
 function identity(input: CandidateIdentity) {
   const name = typeof input?.name === "string" ? input.name.trim() : "";

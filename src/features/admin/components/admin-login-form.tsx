@@ -48,7 +48,7 @@ export function AdminLoginForm() {
       </label>
       {state.error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{state.error}</p>}
       <button type="submit" disabled={isPending} className="w-full rounded-xl bg-indigo-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-300">
-        {isPending ? "로그인 중..." : "관리자 로그인"}
+        {isPending ? "로그인 중..." : "로그인"}
       </button>
     </form>
   );

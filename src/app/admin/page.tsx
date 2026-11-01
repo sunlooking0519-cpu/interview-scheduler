@@ -1,7 +1,7 @@
 import { logoutAdmin } from "@/app/admin/actions";
 import { TimeSlotManager } from "@/features/admin/components/time-slot-manager";
 import { BookingTable } from "@/features/admin/components/booking-table";
-import { requireAdmin } from "@/server/admin-auth";
+import { requireInterviewStaff } from "@/server/admin-auth";
 import { getInterviewReservations, type InterviewReservation } from "@/server/interviews";
 import { getUpcomingReservationStats } from "@/features/admin/reservation-stats";
 
@@ -9,13 +9,19 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 export default async function AdminPage({ searchParams }: { searchParams: Promise<{ calendar?: string }> }) {
-  const { user } = await requireAdmin();
+  const { user, supabase } = await requireInterviewStaff();
   const { calendar } = await searchParams;
   let interviews: InterviewReservation[] = [];
   let loadError = "";
+  let hiringEnabled = false;
 
   try {
-    interviews = await getInterviewReservations();
+    const [loaded, feature] = await Promise.all([
+      getInterviewReservations(),
+      supabase.schema("scheduler").from("interviews").select("hired_at").limit(1),
+    ]);
+    interviews = loaded;
+    hiringEnabled = !feature.error;
   } catch (error) {
     console.error("Admin dashboard load failed", error);
     loadError = "예약 데이터를 불러오지 못했습니다. scheduler 스키마의 API 노출 및 관리자 조회 권한을 확인해 주세요.";
@@ -26,6 +32,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
     ["전체 예약", counts.total],
     ["예약 확정", counts.confirmed],
     ["예약 취소", counts.cancelled],
+    ["채용", counts.hired],
   ] as const;
 
   return (
@@ -34,22 +41,23 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
         <div>
           <p className="text-sm font-semibold text-indigo-600">HR WORKSPACE</p>
           <h1 className="mt-3 text-3xl font-bold">면접 관리 대시보드</h1>
-          <p className="mt-3 text-slate-500">{user.email} 관리자님, 지원자의 일정 선택 현황을 확인하세요.</p>
+          <p className="mt-3 text-slate-500">{user.email}님, 지원자의 일정과 채용 현황을 확인하세요.</p>
         </div>
         <form action={logoutAdmin}>
           <button type="submit" className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">로그아웃</button>
         </form>
       </div>
       {loadError && <p role="alert" className="mt-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{loadError}</p>}
+      {!loadError && !hiringEnabled && <p role="status" className="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">강사·채용 기능을 사용하려면 Supabase에 instructor-hiring-migration.sql을 먼저 적용해 주세요. 기존 예약 기능은 계속 사용할 수 있습니다.</p>}
       <p className="mt-5 text-sm text-slate-600">아직 지나지 않은 면접 일정 기준 · 한국시간(KST) · 취소 건 포함</p>
-      <div className="my-5 grid grid-cols-3 gap-2 sm:my-8 sm:gap-4">
+      <div className="my-5 grid grid-cols-2 gap-2 sm:my-8 sm:grid-cols-4 sm:gap-4">
         {stats.map(([label, count]) => <section key={label} className="min-w-0 rounded-xl border border-slate-200 bg-white px-3 py-4 sm:rounded-2xl sm:p-6"><h2 className="text-xs text-slate-500 sm:text-sm">{label}</h2><p className="mt-2 break-all text-2xl font-bold sm:mt-3 sm:text-3xl">{count}<span className="ml-1 text-xs font-normal text-slate-400 sm:ml-2 sm:text-sm">건</span></p></section>)}
       </div>
       {calendar === "connected" && <p role="status" className="mb-4 rounded-xl bg-emerald-50 p-4 text-sm text-emerald-800">Google 캘린더를 연결했습니다. 기존 예약도 순차적으로 동기화됩니다.</p>}
       {calendar === "error" && <p role="alert" className="mb-4 rounded-xl bg-red-50 p-4 text-sm text-red-700">Google 연결에 실패했습니다. OAuth 설정과 동의 권한을 확인하고 다시 연결해 주세요.</p>}
       {calendar === "owner" && <p role="alert" className="mb-4 rounded-xl bg-amber-50 p-4 text-sm text-amber-800">다른 관리자의 Google 계정이 연결되어 있습니다. 연결한 관리자가 먼저 연결을 해제해야 합니다.</p>}
       <TimeSlotManager interviews={interviews} />
-      <BookingTable interviews={interviews} />
+      <BookingTable interviews={interviews} hiringEnabled={hiringEnabled} />
     </>
   );
 }

@@ -2,7 +2,7 @@ import "server-only";
 
 import { redirect } from "next/navigation";
 import { createClient } from "../../lib/supabase/server";
-import { isAdmin } from "../../lib/supabase/admin-role";
+import { isAdmin, isInterviewStaff } from "../../lib/supabase/admin-role";
 
 export async function requireAdmin() {
   const supabase = await createClient();
@@ -10,5 +10,12 @@ export async function requireAdmin() {
   if (error || !user || !isAdmin(user)) {
     redirect("/admin/login");
   }
+  return { user, supabase };
+}
+
+export async function requireInterviewStaff() {
+  const supabase = await createClient();
+  const { data: { user }, error } = await supabase.auth.getUser();
+  if (error || !user || !isInterviewStaff(user)) redirect("/admin/login");
   return { user, supabase };
 }

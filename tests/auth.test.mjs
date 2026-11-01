@@ -25,7 +25,7 @@ function load(path, imports) {
   return exports;
 }
 
-const { isAdmin } = load("lib/supabase/admin-role.ts", {});
+const { isAdmin, isInterviewStaff } = load("lib/supabase/admin-role.ts", {});
 const timeSlots = load("src/features/booking/time-slots.ts", {});
 const bookingDates = load("src/features/booking/dates.ts", {});
 const admin = { id: "admin-id", email: "admin@example.com", app_metadata: { role: "admin" } };
@@ -59,7 +59,8 @@ test("dashboard counts only reservations whose interview time has not passed in 
     { interview_date: "2026-10-18", interview_time: "10:00", status: "confirmed" },
     { interview_date: "2026-10-19", interview_time: "11:00", status: "cancelled" },
   ];
-  assert.deepEqual({ ...getUpcomingReservationStats(rows, now) }, { total: 2, confirmed: 1, cancelled: 1 });
+  assert.deepEqual({ ...getUpcomingReservationStats(rows, now) }, { total: 2, confirmed: 1, cancelled: 1, hired: 0 });
+  assert.deepEqual({ ...getUpcomingReservationStats([{ interview_date: "2026-10-18", interview_time: "10:00", status: "confirmed", hired_at: "2026-10-18T09:00:00+09:00" }], now) }, { total: 1, confirmed: 0, cancelled: 0, hired: 1 });
 });
 
 test("business card OCR suggests an organization type and extracts contact details", () => {
@@ -651,7 +652,7 @@ test("calendar sync endpoint requires the correct server secret", async () => {
 
 test("Google calendar actions verify administrator access before private reads", async () => {
   const actions = load("src/app/admin/calendar-actions.ts", {
-    "@/server/admin-auth": { requireAdmin: async () => { throw new Error("DENIED"); } },
+    "@/server/admin-auth": { requireInterviewStaff: async () => { throw new Error("DENIED"); } },
     "@/server/google-calendar": {}, "@/server/calendar-sync": {}, "../../../lib/supabase/service": {}, "next/cache": {},
   });
   await assert.rejects(() => actions.getGoogleCalendarMonth("2026-10"), /DENIED/);
@@ -662,7 +663,7 @@ test("Google calendar actions verify administrator access before private reads",
 test("admin November calendar reads events from primary and another Google calendar", async () => {
   const queried = [];
   const actions = load("src/app/admin/calendar-actions.ts", {
-    "@/server/admin-auth": { requireAdmin: async () => ({ user: admin }) },
+    "@/server/admin-auth": { requireInterviewStaff: async () => ({ user: admin }) },
     "@/server/google-calendar": {
       calendarConfig() {}, getCalendarConnection: async () => ({ owner_id: admin.id, calendar_id: "primary" }),
       calendarAccessToken: async () => "token", googleCalendarListRequest: async () => ({ ok: true, status: 200, json: async () => ({ items: [{ id: "primary@example.com", summary: "기본", primary: true }, { id: "samsung@example.com", summary: "삼성 일정" }] }) }),
@@ -682,7 +683,7 @@ test("admin November calendar reads events from primary and another Google calen
 
 test("old Google authorization keeps primary events and requests reconnection", async () => {
   const actions = load("src/app/admin/calendar-actions.ts", {
-    "@/server/admin-auth": { requireAdmin: async () => ({ user: admin }) },
+    "@/server/admin-auth": { requireInterviewStaff: async () => ({ user: admin }) },
     "@/server/google-calendar": {
       calendarConfig() {}, getCalendarConnection: async () => ({ owner_id: admin.id, calendar_id: "primary" }),
       calendarAccessToken: async () => "token", googleCalendarListRequest: async () => ({ ok: false, status: 403 }),
@@ -718,7 +719,7 @@ test("admin cancellation requires authorization and rejects unchanged bookings",
   let authorized = false;
   const { cancelAdminReservation } = load("src/app/admin/reservation-actions.ts", {
     "next/cache": { revalidatePath() {} },
-    "@/server/admin-auth": { requireAdmin: async () => {
+    "@/server/admin-auth": { requireInterviewStaff: async () => {
       authorized = true;
       return { supabase: { schema() { return { rpc: async (fn, args) => {
         assert.equal(fn, "cancel_admin_reservation"); assert.equal(args.p_id, "2");
@@ -754,7 +755,7 @@ test("admin time controls authorize before saving and reject unsupported slots",
   let authorized = 0;
   const saved = [];
   const { setTimeSlot, closeAllTimeSlots, addBookingDate } = load("src/app/admin/time-actions.ts", {
-    "@/server/admin-auth": { requireAdmin: async () => {
+    "@/server/admin-auth": { requireInterviewStaff: async () => {
       authorized++;
       return { supabase: { schema(name) {
         assert.equal(name, "scheduler");
@@ -858,8 +859,72 @@ test("candidate booking accepts only name and phone and omits email in insert", 
 test("only trusted app_metadata grants administrator access", () => {
   assert.equal(isAdmin(admin), true);
   assert.equal(isAdmin({ app_metadata: { role: "super_admin" } }), true);
+  assert.equal(isAdmin({ app_metadata: { role: "instructor" } }), false);
+  assert.equal(isInterviewStaff({ app_metadata: { role: "instructor" } }), true);
+  assert.equal(isInterviewStaff({ app_metadata: {}, user_metadata: { role: "instructor" } }), false);
   assert.equal(isAdmin({ app_metadata: {}, user_metadata: { role: "admin" } }), false);
   assert.equal(isAdmin({ app_metadata: { role: "candidate" } }), false);
+});
+
+test("hiring action calls the scoped RPC and refreshes the interview dashboard", async () => {
+  const calls = [];
+  const { setHiringDecision } = load("src/app/admin/reservation-actions.ts", {
+    "next/cache": { revalidatePath: (path) => calls.push(path) },
+    "@/server/admin-auth": { requireInterviewStaff: async () => ({ supabase: { schema(name) {
+      assert.equal(name, "scheduler");
+      return { rpc: async (name, args) => { calls.push([name, args.p_id]); return { data: true, error: null }; } };
+    } } }) },
+  });
+  assert.equal((await setHiringDecision(7, true)).error, "");
+  assert.equal((await setHiringDecision(7, false)).error, "");
+  assert.ok((await setHiringDecision("bad", true)).error);
+  assert.deepEqual(calls, [["hire_admin_reservation", "7"], "/admin", ["unhire_admin_reservation", "7"], "/admin"]);
+});
+
+test("member approval protects administrators and grants only confirmed instructor applicants", async () => {
+  let target = { id: "11111111-1111-4111-8111-111111111111", app_metadata: { role: "admin" }, user_metadata: { requested_role: "instructor" }, email_confirmed_at: "2026-11-01" };
+  const updates = [];
+  const { setInstructorAccess } = load("src/app/admin/members/actions.ts", {
+    "next/navigation": { redirect }, "next/cache": { revalidatePath() {} },
+    "@/server/admin-auth": { requireAdmin: async () => ({ user: admin }) },
+    "../../../../lib/supabase/service": { createServiceClient: () => ({ schema: () => ({ from: () => ({ select: () => ({ limit: async () => ({ error: null }) }) }) }), auth: { admin: {
+      getUserById: async () => ({ data: { user: target }, error: null }),
+      updateUserById: async (_id, attributes) => { updates.push(attributes); return { error: null }; },
+    } } }) },
+  });
+  const form = new FormData(); form.set("id", target.id); form.set("action", "approve");
+  await assert.rejects(setInstructorAccess(form), /result=protected/);
+  assert.equal(updates.length, 0);
+  target = { ...target, app_metadata: {}, email_confirmed_at: null };
+  await assert.rejects(setInstructorAccess(form), /result=unconfirmed/);
+  assert.equal(updates.length, 0);
+  target = { ...target, email_confirmed_at: "2026-11-01" };
+  await assert.rejects(setInstructorAccess(form), /result=approved/);
+  assert.equal(updates[0].app_metadata.role, "instructor");
+});
+
+test("instructor signup records only an untrusted request and never assigns an app role", async () => {
+  const oldUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const oldKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "public-test-key";
+  let payload;
+  try {
+    const { registerInstructor } = load("src/app/admin/signup/actions.ts", {
+      "@supabase/supabase-js": { createClient: (_url, _key, options) => {
+        assert.equal(options.auth.persistSession, false);
+        return { auth: { signUp: async (input) => { payload = input; return { error: null }; } } };
+      } },
+    });
+    const form = new FormData(); form.set("name", " 김강사 "); form.set("email", "TEACHER@example.com"); form.set("password", "strong-pass-123");
+    assert.equal((await registerInstructor({ error: "", success: false }, form)).success, true);
+    assert.equal(payload.email, "teacher@example.com");
+    assert.equal(payload.options.data.requested_role, "instructor");
+    assert.equal(Object.hasOwn(payload.options.data, "role"), false);
+  } finally {
+    if (oldUrl === undefined) delete process.env.NEXT_PUBLIC_SUPABASE_URL; else process.env.NEXT_PUBLIC_SUPABASE_URL = oldUrl;
+    if (oldKey === undefined) delete process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY; else process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = oldKey;
+  }
 });
 
 test("server guard rejects missing, invalid and ordinary users", async () => {
@@ -881,7 +946,7 @@ function actions(auth) {
   return load("src/app/admin/actions.ts", {
     "next/navigation": { redirect }, "next/cache": { revalidatePath() {} },
     "../../../lib/supabase/server": { createClient: async () => ({ auth }) },
-    "../../../lib/supabase/admin-role": { isAdmin },
+    "../../../lib/supabase/admin-role": { isAdmin, isInterviewStaff },
   });
 }
 
@@ -935,7 +1000,7 @@ test("reservation listing checks authorization and queries scheduler.interviews"
     then(resolve) { resolve({ data: rows, error: null }); },
   };
   const { getInterviewReservations } = load("src/server/interviews.ts", {
-    "server-only": {}, "@/server/admin-auth": { requireAdmin: async () => {
+    "server-only": {}, "@/server/admin-auth": { requireInterviewStaff: async () => {
       calls.push("authorized");
       return { supabase: { schema(name) { calls.push(name); return query; } } };
     } },
@@ -953,9 +1018,13 @@ test("proxy preserves refreshed cookies on allowed and denied requests without a
     for (const [path, user, status] of [
       ["/admin", admin, 200], ["/admin", null, 307],
       ["/admin", { app_metadata: {} }, 307], ["/admin/login", null, 200],
+      ["/admin", { app_metadata: { role: "instructor" } }, 200],
+      ["/admin/sales", { app_metadata: { role: "instructor" } }, 307],
+      ["/admin/members", { app_metadata: { role: "instructor" } }, 307],
+      ["/admin/signup", null, 200],
     ]) {
       const { proxy } = load("src/proxy.ts", {
-        "next/server": { NextRequest, NextResponse }, "../lib/supabase/admin-role": { isAdmin },
+        "next/server": { NextRequest, NextResponse }, "../lib/supabase/admin-role": { isAdmin, isInterviewStaff },
         "@supabase/ssr": { createServerClient: (_url, _key, { cookies }) => ({
           auth: { getUser: async () => {
             cookies.setAll([{ name: "sb-session", value: "refreshed", options: { path: "/", sameSite: "lax" } }]);

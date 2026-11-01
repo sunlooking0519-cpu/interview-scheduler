@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "../../../lib/supabase/server";
-import { isAdmin } from "../../../lib/supabase/admin-role";
+import { isInterviewStaff } from "../../../lib/supabase/admin-role";
 
 export type AdminLoginState = { error: string; success?: boolean };
 
@@ -23,9 +23,9 @@ export async function loginAdmin(
     if (error || !data.user || !data.session) {
       return { error: "이메일 또는 비밀번호가 올바르지 않습니다." };
     }
-    if (!isAdmin(data.user)) {
+    if (!isInterviewStaff(data.user)) {
       await supabase.auth.signOut({ scope: "local" });
-      return { error: "관리자 권한이 없는 계정입니다." };
+      return { error: "승인된 관리자 또는 강사 계정이 아닙니다." };
     }
   } catch {
     return { error: "인증 서비스에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요." };

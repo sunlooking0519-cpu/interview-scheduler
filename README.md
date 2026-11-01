@@ -70,7 +70,7 @@ pnpm build
 
 1. 신규 DB는 `supabase/schema.sql`, 이어서 `supabase/admin-auth-migration.sql`을 실행합니다. 이미 `scheduler.interviews`가 있으면 마이그레이션만 실행합니다. 실제 DB에 자동 실행되지 않습니다.
 2. Supabase Data API 설정의 Exposed schemas에 `scheduler`를 추가합니다. 마이그레이션은 스키마 사용 권한, 예약 INSERT, 관리자 SELECT RLS 정책을 설정합니다. 기존 데이터는 삭제하지 않습니다.
-3. Authentication > Users에서 관리자 이메일/비밀번호 계정을 생성하고 이메일 확인을 완료합니다. 관리자 외 회원가입이 필요하지 않으면 Authentication 설정에서 신규 회원가입을 끕니다.
+3. Authentication > Users에서 관리자 이메일/비밀번호 계정을 생성하고 이메일 확인을 완료합니다. 강사 가입을 사용하려면 Authentication의 이메일 가입을 켜고 이메일 확인을 설정합니다.
 4. 신뢰할 수 있는 SQL Editor에서 아래처럼 실제 관리자 이메일에 `app_metadata.role`을 지정합니다. 사용자가 수정할 수 있는 `user_metadata`는 권한 판단에 사용하지 않습니다.
 
 ```sql
@@ -91,6 +91,13 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-or-publishable-key
 `ADMIN_SESSION_SECRET`은 사용하지 않습니다. 예약 조회는 로그인한 관리자의 세션과 RLS로 수행합니다. Google 캘린더 연결 정보와 동기화 큐는 서버 전용 Supabase secret/service_role 키를 사용합니다.
 
 6. `/admin/login`에서 이메일/비밀번호로 로그인합니다. 비로그인 및 일반 계정은 대시보드와 예약 조회에서 차단됩니다. 대시보드 상단 로그아웃은 현재 브라우저 세션을 종료하고 로그인 페이지로 이동합니다.
+
+### 강사 멤버와 채용
+
+`supabase/instructor-hiring-migration.sql`을 Supabase SQL Editor에서 실행합니다. 기존 예약을 유지하면서 채용일·채용 처리자 컬럼, 면접관리 강사 조회 및 시간 관리 권한, 채용·취소 RPC를 추가합니다. 채용된 예약은 기존 시간을 계속 점유합니다. 코드가 먼저 배포되어도 SQL 적용 전에는 기존 예약 화면을 유지하며 채용 버튼을 숨깁니다.
+
+강사는 `/admin/signup`에서 가입하고 이메일 확인을 완료합니다. 관리자는 `/admin/members`에서 가입 요청을 승인하거나 강사 권한을 해제합니다. 승인 전에는 면접 자료를 볼 수 없고, 승인된 강사는 `/admin`의 면접관리만 사용합니다. 영업관리·명함관리·멤버관리는 관리자에게만 열립니다. 가입 승인에는 서버 전용 `SUPABASE_SECRET_KEY` 또는 `SUPABASE_SERVICE_ROLE_KEY`가 필요하며 브라우저 환경 변수로 노출하지 않습니다.
+Supabase Authentication의 Site URL을 실제 사이트 주소로 설정해야 가입 확인 메일이 올바른 사이트로 연결됩니다.
 
 ## 검증
 

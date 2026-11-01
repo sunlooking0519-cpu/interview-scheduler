@@ -1,7 +1,7 @@
 import type { InterviewReservation } from "@/server/interviews";
 
 export function getUpcomingReservationStats(
-  interviews: Pick<InterviewReservation, "interview_date" | "interview_time" | "status">[],
+  interviews: (Pick<InterviewReservation, "interview_date" | "interview_time" | "status"> & { hired_at?: string | null })[],
   now = new Date(),
 ) {
   const upcoming = interviews.filter(({ interview_date, interview_time }) => {
@@ -12,7 +12,8 @@ export function getUpcomingReservationStats(
 
   return {
     total: upcoming.length,
-    confirmed: upcoming.filter(({ status }) => status === "confirmed").length,
+    confirmed: upcoming.filter(({ status, hired_at }) => status === "confirmed" && !hired_at).length,
     cancelled: upcoming.filter(({ status }) => status === "cancelled").length,
+    hired: upcoming.filter(({ status, hired_at }) => status === "confirmed" && !!hired_at).length,
   };
 }

@@ -81,7 +81,7 @@ export function ApplicationReview() {
       <Link href="/login" className="inline-block font-semibold text-indigo-600 hover:underline">이름·전화번호 다시 입력하기</Link>
     </div>}
     {reservations.map((row) => <form key={row.id} className="space-y-4 rounded-2xl border border-slate-200 p-5" onSubmit={(event) => { event.preventDefault(); void save(row); }}>
-      <p className="font-semibold">면접 예약 · {row.status === "confirmed" ? "확정" : "취소"}</p>
+      <p className="font-semibold">면접 예약 · {row.status === "confirmed" ? "확정" : row.status === "hired" ? "채용" : "취소"}</p>
       <fieldset disabled={saving || row.status !== "confirmed"} className="space-y-6">
         <legend className="mb-3 text-sm font-semibold">면접 날짜</legend>
         <BookingCalendar selected={row.interview_date} disabled={saving || row.status !== "confirmed"} onSelect={(value) => change(row.id, "interview_date", value)} />

@@ -1,13 +1,13 @@
 import { timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
 import { NextResponse, type NextRequest } from "next/server";
-import { requireAdmin } from "@/server/admin-auth";
+import { requireInterviewStaff } from "@/server/admin-auth";
 import { CALENDAR_SCOPE, CALENDAR_LIST_SCOPE, calendarConfig, encryptToken, getCalendarConnection, googleToken } from "@/server/google-calendar";
 import { createServiceClient } from "../../../../../lib/supabase/service";
 import { scheduleCalendarSync } from "@/server/calendar-sync";
 
 export async function GET(request: NextRequest) {
-  const { user } = await requireAdmin();
+  const { user } = await requireInterviewStaff();
   const store = await cookies();
   const saved = store.get("google_calendar_oauth")?.value;
   store.set("google_calendar_oauth", "", { path: "/admin/google", maxAge: 0 });

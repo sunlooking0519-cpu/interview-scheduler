@@ -4,3 +4,7 @@ import type { User } from "@supabase/supabase-js";
 export function isAdmin(user: Pick<User, "app_metadata">): boolean {
   return user.app_metadata.role === "admin" || user.app_metadata.role === "super_admin";
 }
+
+export function isInterviewStaff(user: Pick<User, "app_metadata">): boolean {
+  return isAdmin(user) || user.app_metadata.role === "instructor";
+}
