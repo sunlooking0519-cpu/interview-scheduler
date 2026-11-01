@@ -927,6 +927,23 @@ test("instructor signup records only an untrusted request and never assigns an a
   }
 });
 
+test("instructor hierarchy attributes hires to managers and preserves former recruiters", () => {
+  const { buildInstructorHierarchy } = load("src/features/admin/instructor-hierarchy.ts", {});
+  const accounts = [
+    { id: "top", email: "top@example.com", name: "최고", role: "admin", requestedRole: "", confirmed: true, createdAt: "" },
+    { id: "middle", email: "middle@example.com", name: "중간", role: "instructor", requestedRole: "instructor", confirmed: true, createdAt: "" },
+    { id: "former", email: "former@example.com", name: "이전", role: "pending", requestedRole: "instructor", confirmed: true, createdAt: "" },
+  ];
+  const teacher = (id, recruiter) => ({ id, name: id, email: null, phone: "01012345678", interview_date: "2026-11-01", hired_at: "2026-11-01T09:00:00+09:00", hired_by: recruiter });
+  const result = buildInstructorHierarchy(accounts, [teacher("A", "middle"), teacher("B", "former"), teacher("C", "top"), teacher("D", null)]);
+  assert.equal(result.topAdministrators.length, 1);
+  assert.equal(result.middleManagers.length, 1);
+  assert.deepEqual(Array.from(result.teachersByRecruiter.get("middle"), (row) => row.id), ["A"]);
+  assert.deepEqual(Array.from(result.formerManagers, (row) => row.id), ["former"]);
+  assert.deepEqual(Array.from(result.directHires, (row) => row.id), ["C"]);
+  assert.deepEqual(Array.from(result.unattributedHires, (row) => row.id), ["D"]);
+});
+
 test("server guard rejects missing, invalid and ordinary users", async () => {
   for (const result of [
     { data: { user: null }, error: null },

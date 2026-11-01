@@ -99,6 +99,8 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-or-publishable-key
 강사는 `/admin/signup`에서 가입하고 이메일 확인을 완료합니다. 관리자는 `/admin/members`에서 가입 요청을 승인하거나 강사 권한을 해제합니다. 승인 전에는 면접 자료를 볼 수 없고, 승인된 강사는 `/admin`의 면접관리만 사용합니다. 영업관리·명함관리·멤버관리는 관리자에게만 열립니다. 가입 승인에는 서버 전용 `SUPABASE_SECRET_KEY` 또는 `SUPABASE_SERVICE_ROLE_KEY`가 필요하며 브라우저 환경 변수로 노출하지 않습니다.
 Supabase Authentication의 Site URL을 실제 사이트 주소로 설정해야 가입 확인 메일이 올바른 사이트로 연결됩니다.
 
+`/admin/members`의 강사관리 메뉴는 최고관리자(`admin`/`super_admin`) → 면접·채용 권한을 가진 중간관리자(내부 Auth 역할 `instructor`) → 채용된 지원자 기록인 채용강사를 보여줍니다. 채용 시 `hired_by`에 처리자 계정을 기록하므로 최고관리자는 누가 누구를 채용했는지 확인할 수 있습니다. 중간관리자의 권한을 해제해도 과거 채용 기록은 유지됩니다. 채용강사에게 관리자 로그인 권한은 자동으로 생기지 않습니다.
+
 ## 검증
 
 이력서 업로드를 배포하기 전에 [설정 안내](docs/resumes-setup.md)에 따라 `supabase/resumes-migration.sql`을 실행하세요. 공개 resumes 버킷, 최대 5MB의 PDF/Word 선택 첨부, 관리자 파일 다운로드를 지원합니다.

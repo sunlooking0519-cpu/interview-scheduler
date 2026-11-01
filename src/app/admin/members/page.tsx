@@ -1,42 +1,66 @@
+import Link from "next/link";
 import { requireAdmin } from "@/server/admin-auth";
 import { createServiceClient } from "../../../../lib/supabase/service";
+import { buildInstructorHierarchy, type HiredTeacher, type StaffAccount } from "@/features/admin/instructor-hierarchy";
 import { setInstructorAccess } from "./actions";
 
 export const dynamic = "force-dynamic";
 
-type Member = { id: string; email: string; name: string; createdAt: string; confirmed: boolean; approved: boolean };
+const dateLabel = (value: string) => new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", year: "numeric", month: "short", day: "numeric" }).format(new Date(value));
 const messages: Record<string, string> = {
-  approved: "강사 권한을 부여했습니다. 해당 강사는 로그인 후 면접관리 화면을 사용할 수 있습니다.",
-  revoked: "강사 권한을 해제했습니다.", invalid: "가입 요청 정보를 확인해 주세요.",
-  protected: "관리자 계정의 권한은 이 화면에서 변경할 수 없습니다.",
+  approved: "중간관리자 권한을 부여했습니다. 이제 면접과 채용을 처리할 수 있습니다.",
+  revoked: "중간관리자 권한을 해제했습니다. 기존 채용 기록은 보존됩니다.",
+  invalid: "가입 요청 정보를 확인해 주세요.", protected: "최고관리자 계정은 이 화면에서 변경할 수 없습니다.",
   unconfirmed: "이메일 확인을 마친 계정만 승인할 수 있습니다.",
-  setup: "강사 권한을 부여하기 전에 Supabase에 instructor-hiring-migration.sql을 적용해 주세요.",
-  error: "멤버 정보를 변경하지 못했습니다. 잠시 후 다시 시도해 주세요.",
+  setup: "권한 승인 전에 Supabase에 instructor-hiring-migration.sql을 적용해 주세요.",
+  error: "권한을 변경하지 못했습니다. 잠시 후 다시 시도해 주세요.",
 };
 
+function TeacherList({ teachers }: { teachers: HiredTeacher[] }) {
+  if (!teachers.length) return <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-500">아직 채용한 강사가 없습니다.</p>;
+  return <ul className="divide-y divide-slate-100">{teachers.map((teacher) => <li key={teacher.id} className="flex flex-wrap items-center justify-between gap-2 py-3 first:pt-0"><div><p className="font-semibold text-slate-900">{teacher.name}</p><p className="text-xs text-slate-500">{teacher.phone}{teacher.email ? ` · ${teacher.email}` : ""}</p></div><span className="text-xs text-slate-500">채용 {dateLabel(teacher.hired_at)}</span></li>)}</ul>;
+}
+
 export default async function MembersPage({ searchParams }: { searchParams: Promise<{ result?: string }> }) {
-  await requireAdmin();
+  const { supabase } = await requireAdmin();
   const { result = "" } = await searchParams;
-  const members: Member[] = [];
-  let loadError = "";
+  const accounts: StaffAccount[] = [];
+  let accountError = "";
+  let hiringError = "";
+  let teachers: HiredTeacher[] = [];
   try {
     const service = createServiceClient();
     for (let page = 1; page <= 10; page++) {
       const { data, error } = await service.auth.admin.listUsers({ page, perPage: 200 });
       if (error) throw error;
       for (const user of data.users) {
-        if (user.user_metadata.requested_role !== "instructor" && user.app_metadata.role !== "instructor") continue;
-        members.push({ id: user.id, email: user.email ?? "", name: String(user.user_metadata.full_name ?? ""), createdAt: user.created_at, confirmed: !!user.email_confirmed_at, approved: user.app_metadata.role === "instructor" });
+        const role = String(user.app_metadata.role ?? "");
+        const requestedRole = String(user.user_metadata.requested_role ?? "");
+        if (!["admin", "super_admin", "instructor"].includes(role) && requestedRole !== "instructor") continue;
+        accounts.push({ id: user.id, email: user.email ?? "", name: String(user.user_metadata.full_name ?? ""), role, requestedRole, confirmed: !!user.email_confirmed_at, createdAt: user.created_at });
       }
       if (data.users.length < 200) break;
     }
-  } catch {
-    loadError = "멤버 목록을 불러오지 못했습니다. Supabase 서버 키와 Auth 권한을 확인해 주세요.";
-  }
-  members.sort((a, b) => Number(a.approved) - Number(b.approved) || b.createdAt.localeCompare(a.createdAt));
-  return <div className="space-y-6"><header className="rounded-3xl bg-slate-950 p-6 text-white sm:p-8"><p className="text-xs font-bold tracking-[0.2em] text-indigo-300">MEMBER MANAGEMENT</p><h1 className="mt-3 text-3xl font-bold">강사 멤버 관리</h1><p className="mt-3 text-sm text-slate-200">강사 가입 요청을 확인하고 면접관리 접근 권한을 부여합니다. 강사는 영업관리와 멤버 관리에 접근할 수 없습니다.</p></header>
-    {result && messages[result] && <p role={result === "approved" || result === "revoked" ? "status" : "alert"} className="rounded-xl bg-indigo-50 p-4 text-sm text-indigo-800">{messages[result]}</p>}
-    {loadError && <p role="alert" className="rounded-xl bg-red-50 p-4 text-sm text-red-700">{loadError}</p>}
-    <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6"><h2 className="text-xl font-bold">가입 요청과 승인된 강사 <span className="text-indigo-700">{members.length}</span></h2><p className="mt-1 text-sm text-slate-500">강사는 가입 페이지에서 신청하고 이메일 확인을 마친 뒤 승인할 수 있습니다.</p><div className="mt-5 space-y-3">{members.map((member) => <article key={member.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 p-4"><div><div className="flex flex-wrap items-center gap-2"><strong>{member.name || "이름 미입력"}</strong><span className={`rounded-full px-2 py-0.5 text-xs font-bold ${member.approved ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>{member.approved ? "강사 승인" : "승인 대기"}</span></div><p className="mt-1 text-sm text-slate-600">{member.email}</p><p className="mt-1 text-xs text-slate-500">{member.confirmed ? "이메일 확인 완료" : "이메일 확인 대기"}</p></div><form action={setInstructorAccess}><input type="hidden" name="id" value={member.id}/><input type="hidden" name="action" value={member.approved ? "revoke" : "approve"}/><button disabled={!member.approved && !member.confirmed} className={`rounded-lg px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50 ${member.approved ? "border border-rose-200 text-rose-700" : "bg-indigo-600 text-white"}`}>{member.approved ? "권한 해제" : "강사 승인"}</button></form></article>)}</div>{!loadError && members.length === 0 && <p className="mt-5 rounded-xl bg-slate-50 p-5 text-sm text-slate-500">아직 강사 가입 요청이 없습니다.</p>}</section>
+  } catch { accountError = "계정 목록을 불러오지 못했습니다. Supabase 서버 키와 Auth 권한을 확인해 주세요."; }
+
+  const { data: hires, error: hiresError } = await supabase.schema("scheduler").from("interviews")
+    .select("id,name,email,phone,interview_date,hired_at,hired_by")
+    .not("hired_at", "is", null).order("hired_at", { ascending: false }).limit(1000);
+  if (hiresError) hiringError = "채용 기록을 불러오지 못했습니다. instructor-hiring-migration.sql 적용 여부를 확인해 주세요.";
+  else teachers = (hires ?? []) as HiredTeacher[];
+
+  const { topAdministrators, middleManagers, formerManagers, requests, teachersByRecruiter, directHires, unattributedHires } = buildInstructorHierarchy(accounts, teachers);
+  middleManagers.sort((a, b) => (teachersByRecruiter.get(b.id)?.length ?? 0) - (teachersByRecruiter.get(a.id)?.length ?? 0) || a.name.localeCompare(b.name, "ko"));
+  requests.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  return <div className="space-y-6">
+    <header className="rounded-3xl bg-gradient-to-br from-slate-950 via-indigo-950 to-indigo-800 p-6 text-white sm:p-8"><p className="text-xs font-bold tracking-[0.2em] text-indigo-200">INSTRUCTOR TEAM</p><h1 className="mt-3 text-3xl font-bold">강사 관리</h1><p className="mt-3 max-w-2xl text-sm leading-6 text-indigo-100">최고관리자가 면접·채용 권한을 가진 중간관리자를 승인하고, 각 관리자가 채용한 강사를 확인합니다.</p></header>
+    {result && messages[result] && <p role={["approved", "revoked"].includes(result) ? "status" : "alert"} className="rounded-xl bg-indigo-50 p-4 text-sm text-indigo-800">{messages[result]}</p>}
+    {accountError && <p role="alert" className="rounded-xl bg-red-50 p-4 text-sm text-red-700">{accountError}</p>}
+    {hiringError && <p role="alert" className="rounded-xl bg-amber-50 p-4 text-sm text-amber-800">{hiringError}</p>}
+    <section aria-label="강사 조직 요약" className="grid gap-3 sm:grid-cols-3"><div className="rounded-2xl border border-slate-200 bg-white p-5"><p className="text-sm font-semibold text-slate-600">최고관리자</p><p className="mt-2 text-3xl font-bold">{topAdministrators.length}</p></div><div className="rounded-2xl border border-indigo-200 bg-indigo-50 p-5"><p className="text-sm font-semibold text-indigo-700">중간관리자 · 면접·채용 권한</p><p className="mt-2 text-3xl font-bold">{middleManagers.length}</p></div><div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5"><p className="text-sm font-semibold text-emerald-700">채용강사</p><p className="mt-2 text-3xl font-bold">{teachers.length}</p></div></section>
+    <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6"><h2 className="text-xl font-bold">강사 구조</h2><p className="mt-1 text-sm text-slate-500">채용자는 채용 버튼을 누른 계정의 기록입니다.</p><div className="mt-5 rounded-xl bg-slate-950 p-4 text-white"><p className="text-xs font-bold text-indigo-200">최고관리자</p><div className="mt-2 flex flex-wrap gap-2">{topAdministrators.map((account) => <span key={account.id} className="rounded-lg bg-white/10 px-3 py-2 text-sm">{account.name || account.email}</span>)}{!topAdministrators.length && <span className="text-sm text-slate-300">계정을 불러오지 못했습니다.</span>}</div></div><div className="mx-6 h-5 border-l-2 border-indigo-200"/><div className="grid gap-3 lg:grid-cols-2">{middleManagers.map((manager) => { const recruited = teachersByRecruiter.get(manager.id) ?? []; return <article key={manager.id} className="rounded-xl border border-indigo-200 bg-indigo-50/30 p-4"><div className="flex flex-wrap items-center justify-between gap-2"><div><p className="text-xs font-bold text-indigo-700">중간관리자 · 면접·채용 가능</p><h3 className="mt-1 font-bold text-slate-950">{manager.name || manager.email}</h3><p className="text-xs text-slate-500">{manager.email}</p></div><span className="rounded-full bg-indigo-100 px-3 py-1 text-sm font-bold text-indigo-800">채용 {recruited.length}명</span></div><div className="mt-4 border-t border-indigo-100 pt-3"><p className="mb-2 text-xs font-bold text-slate-600">이 관리자가 채용한 강사</p><TeacherList teachers={recruited}/></div></article>; })}{!middleManagers.length && <p className="rounded-xl bg-slate-50 p-5 text-sm text-slate-500">승인된 중간관리자가 없습니다. 아래 가입 요청에서 승인해 주세요.</p>}</div></section>
+    {(directHires.length > 0 || formerManagers.length > 0 || unattributedHires.length > 0) && <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6"><h2 className="text-xl font-bold">다른 채용 기록</h2><div className="mt-4 space-y-4">{topAdministrators.filter((account) => teachersByRecruiter.has(account.id)).map((account) => <div key={account.id} className="rounded-xl border border-slate-200 p-4"><h3 className="mb-3 font-bold">최고관리자 직접 채용 · {account.name || account.email}</h3><TeacherList teachers={teachersByRecruiter.get(account.id) ?? []}/></div>)}{formerManagers.map((account) => <div key={account.id} className="rounded-xl border border-slate-200 p-4"><h3 className="mb-3 font-bold">권한 해제된 중간관리자 · {account.name || account.email}</h3><TeacherList teachers={teachersByRecruiter.get(account.id) ?? []}/></div>)}{unattributedHires.length > 0 && <div className="rounded-xl border border-amber-200 p-4"><h3 className="mb-3 font-bold">채용자 미확인</h3><TeacherList teachers={unattributedHires}/></div>}</div></section>}
+    <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6"><div className="flex flex-wrap items-end justify-between gap-2"><div><h2 className="text-xl font-bold">중간관리자 계정 관리</h2><p className="mt-1 text-sm text-slate-500">가입 신청을 승인하면 면접관리와 채용 버튼을 사용할 수 있습니다.</p></div><Link href="/admin?list=hired" className="text-sm font-bold text-indigo-700">채용 목록 보기 →</Link></div><div className="mt-4 space-y-3">{[...middleManagers, ...requests].map((account) => <article key={account.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 p-4"><div><div className="flex flex-wrap items-center gap-2"><strong>{account.name || "이름 미입력"}</strong><span className={`rounded-full px-2 py-0.5 text-xs font-bold ${account.role === "instructor" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>{account.role === "instructor" ? "중간관리자" : account.role === "pending" ? "권한 해제" : "승인 대기"}</span></div><p className="mt-1 text-sm text-slate-600">{account.email}</p><p className="mt-1 text-xs text-slate-500">{account.confirmed ? "이메일 확인 완료" : "이메일 확인 대기"} · 채용 {teachersByRecruiter.get(account.id)?.length ?? 0}명</p></div><form action={setInstructorAccess}><input type="hidden" name="id" value={account.id}/><input type="hidden" name="action" value={account.role === "instructor" ? "revoke" : "approve"}/><button disabled={account.role !== "instructor" && !account.confirmed} className={`rounded-lg px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50 ${account.role === "instructor" ? "border border-rose-200 text-rose-700" : "bg-indigo-600 text-white"}`}>{account.role === "instructor" ? "권한 해제" : "중간관리자 승인"}</button></form></article>)}</div>{!accountError && middleManagers.length + requests.length === 0 && <p className="mt-4 rounded-xl bg-slate-50 p-5 text-sm text-slate-500">아직 가입 요청이 없습니다.</p>}</section>
+    <p className="text-xs text-slate-500">채용강사는 채용 처리된 지원자 기록입니다. 채용만으로 관리자 로그인 계정이 생성되거나 면접관리 권한이 부여되지는 않습니다.</p>
   </div>;
 }

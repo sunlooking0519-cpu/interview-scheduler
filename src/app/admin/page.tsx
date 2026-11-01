@@ -8,9 +8,9 @@ import { getUpcomingReservationStats } from "@/features/admin/reservation-stats"
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-export default async function AdminPage({ searchParams }: { searchParams: Promise<{ calendar?: string }> }) {
+export default async function AdminPage({ searchParams }: { searchParams: Promise<{ calendar?: string; list?: string }> }) {
   const { user, supabase } = await requireInterviewStaff();
-  const { calendar } = await searchParams;
+  const { calendar, list } = await searchParams;
   let interviews: InterviewReservation[] = [];
   let loadError = "";
   let hiringEnabled = false;
@@ -57,7 +57,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
       {calendar === "error" && <p role="alert" className="mb-4 rounded-xl bg-red-50 p-4 text-sm text-red-700">Google 연결에 실패했습니다. OAuth 설정과 동의 권한을 확인하고 다시 연결해 주세요.</p>}
       {calendar === "owner" && <p role="alert" className="mb-4 rounded-xl bg-amber-50 p-4 text-sm text-amber-800">다른 관리자의 Google 계정이 연결되어 있습니다. 연결한 관리자가 먼저 연결을 해제해야 합니다.</p>}
       <TimeSlotManager interviews={interviews} />
-      <BookingTable interviews={interviews} hiringEnabled={hiringEnabled} />
+      <BookingTable key={list === "hired" && hiringEnabled ? "hired" : "confirmed"} interviews={interviews} hiringEnabled={hiringEnabled} initialStatus={list === "hired" && hiringEnabled ? "hired" : "confirmed"} />
     </>
   );
 }

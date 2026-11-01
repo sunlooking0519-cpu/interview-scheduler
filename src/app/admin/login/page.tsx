@@ -8,7 +8,7 @@ export default function AdminLoginPage() {
       <h1 className="mt-3 text-2xl font-bold">관리자 로그인</h1>
       <p className="mt-2 text-sm leading-6 text-slate-500">승인된 관리자 또는 강사 계정으로 로그인하세요.</p>
       <AdminLoginForm />
-      <p className="mt-5 text-center text-sm text-slate-600">강사 계정이 없나요? <Link href="/admin/signup" className="font-semibold text-indigo-700">강사 회원가입</Link></p>
+      <p className="mt-5 text-center text-sm text-slate-600">면접·채용 담당 강사인가요? <Link href="/admin/signup" className="font-semibold text-indigo-700">중간관리자 가입 신청</Link></p>
     </section>
   );
 }

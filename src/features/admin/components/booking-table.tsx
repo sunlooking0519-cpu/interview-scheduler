@@ -40,8 +40,8 @@ function ResumeLink({ url, compact = false }: { url?: string | null; compact?: b
   return <a href={url} target="_blank" rel="noopener noreferrer" aria-label="이력서 보기 / 다운로드" className={`inline-flex min-h-11 items-center justify-center rounded-lg border border-indigo-200 px-3 text-sm font-semibold text-indigo-600 hover:bg-indigo-50 ${compact ? "w-full" : ""}`}>{compact ? "이력서 보기" : "이력서 보기 / 다운로드"}</a>;
 }
 
-export function BookingTable({ interviews, hiringEnabled = true }: { interviews: InterviewReservation[]; hiringEnabled?: boolean }) {
-  const [status, setStatus] = useState<ListStatus>("confirmed");
+export function BookingTable({ interviews, hiringEnabled = true, initialStatus = "confirmed" }: { interviews: InterviewReservation[]; hiringEnabled?: boolean; initialStatus?: ListStatus }) {
+  const [status, setStatus] = useState<ListStatus>(initialStatus);
   const belongsTo = (row: InterviewReservation, value: ListStatus) => value === "hired" ? row.status === "confirmed" && !!row.hired_at : row.status === value && (value !== "confirmed" || !row.hired_at);
   const visible = interviews.filter((row) => belongsTo(row, status));
   const emptyMessage = status === "confirmed" ? "확정된 예약이 없습니다." : status === "hired" ? "채용된 지원자가 없습니다." : "취소된 예약이 없습니다.";
