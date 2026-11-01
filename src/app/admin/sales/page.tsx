@@ -68,7 +68,7 @@ export default async function SalesPage({ searchParams }: {
     let loadError = false;
     for (let offset = 0; ; offset += 1000) {
       const result = await db.from("sales_organizations")
-        .select("id,name,updated_at")
+        .select("id,name,region,updated_at")
         .order("updated_at", { ascending: false }).order("id").range(offset, offset + 999);
       if (result.error) { loadError = true; break; }
       const batch = (result.data ?? []) as SalesOrganizationRow[];
@@ -77,7 +77,7 @@ export default async function SalesPage({ searchParams }: {
     }
     let hasProposalStatus = true;
     for (let offset = 0; ; offset += 1000) {
-      const columns = `id,organization_id,contact_id,activity_type,occurred_at,created_at,summary,follow_up_round,reaction${hasProposalStatus ? ",proposal_status" : ""}`;
+      const columns = `id,organization_id,contact_id,activity_type,occurred_at,created_at,summary,follow_up_round,reaction${hasProposalStatus ? ",proposal_status,visit_region,contact_method" : ""}`;
       const result = await db.from("sales_activities").select(columns)
         .order("created_at", { ascending: false }).order("id", { ascending: false }).range(offset, offset + 999);
       if (result.error && hasProposalStatus && ["42703", "PGRST204"].includes(result.error.code)) {
@@ -94,7 +94,7 @@ export default async function SalesPage({ searchParams }: {
     return <SalesDashboard
       organizations={rows}
       recentActivities={allActivities.slice(0, 15)}
-      query={q} saved={saved} loadError={loadError}
+      query={q} saved={saved} loadError={loadError} today={koreaDateKey(new Date())}
     />;
   }
   const { data, error } = await db.from("sales_organizations")

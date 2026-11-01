@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { DashboardActivity } from "../sales-dashboard-model";
 import type { SalesOrganizationListRow } from "../sales-organization-list";
+import { OrganizationFollowUpDialog } from "./organization-follow-up-dialog";
 
 const workflow = [
   ["기관 방문", "명함 등록 · 상담 기록"], ["제안서 메일", "맞춤 자료 발송"],
@@ -12,11 +13,12 @@ const proposalLabels: Record<string, string> = { not_submitted: "미제출", pla
 const reactionLabels: Record<string, string> = { interested: "관심 높음", reviewing: "검토 중", waiting: "시기 대기", neutral: "보통", no_budget: "예산 없음", not_interested: "관심 없음", no_response: "응답 없음" };
 const activityLabels: Record<string, string> = { visit: "접촉", call: "전화", email: "메일", proposal: "제안서", meeting: "상담", note: "메모" };
 const dateTimeFormatter = new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+const dateFormatter = new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit" });
 
-export function SalesDashboard({ organizations, recentActivities, query, saved, loadError }: {
+export function SalesDashboard({ organizations, recentActivities, query, saved, loadError, today }: {
   organizations: SalesOrganizationListRow[];
   recentActivities: DashboardActivity[];
-  query: string; saved: string; loadError: boolean;
+  query: string; saved: string; loadError: boolean; today: string;
 }) {
   const normalizedQuery = query.trim().toLocaleLowerCase("ko-KR");
   const visible = normalizedQuery ? organizations.filter((item) => item.name.toLocaleLowerCase("ko-KR").includes(normalizedQuery)) : organizations;
@@ -36,15 +38,17 @@ export function SalesDashboard({ organizations, recentActivities, query, saved, 
     </section>
     <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white" aria-label="전체 기관 관리 목록">
       <div className="flex flex-col gap-4 p-4 sm:flex-row sm:items-end sm:justify-between sm:p-6">
-        <div><h2 className="text-xl font-bold">전체 기관 <span className="text-indigo-600">{visible.length}</span></h2><p className="mt-1 text-sm text-slate-500">최근 관리 기록 순 · 업데이트 시각은 기록 저장 시점 기준</p></div>
+        <div><h2 className="text-xl font-bold">전체 기관 <span className="text-indigo-600">{visible.length}</span></h2><p className="mt-1 text-sm text-slate-500">최근 관리 기록 순 · 최근 업데이트는 기록 저장일 기준</p></div>
         <form action="/admin/sales" className="flex gap-2"><input name="q" defaultValue={query} aria-label="기관명 검색" placeholder="기관명 검색" className="min-w-0 flex-1 rounded-xl border border-slate-300 px-3 py-2 text-sm sm:w-56"/><button className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white">검색</button>{normalizedQuery && <Link href="/admin/sales" className="rounded-xl border px-3 py-2 text-sm font-semibold">초기화</Link>}</form>
       </div>
-      <div className="hidden grid-cols-[minmax(0,2fr)_minmax(150px,1fr)_minmax(120px,1fr)_minmax(120px,1fr)] gap-4 border-y bg-slate-50 px-6 py-3 text-xs font-bold text-slate-600 md:grid"><span>기관명</span><span>최근 업데이트</span><span>제안서 제출</span><span>반응</span></div>
-      <div className="divide-y divide-slate-100">{visible.map((item) => <article key={item.id} className="grid gap-3 px-4 py-4 hover:bg-slate-50 sm:px-6 md:grid-cols-[minmax(0,2fr)_minmax(150px,1fr)_minmax(120px,1fr)_minmax(120px,1fr)] md:items-center md:gap-4">
+      <div className="hidden grid-cols-[minmax(150px,2fr)_110px_120px_110px_100px_90px] gap-3 border-y bg-slate-50 px-6 py-3 text-xs font-bold text-slate-600 lg:grid"><span>기관명</span><span>방문일</span><span>최근 업데이트</span><span>제안서 제출</span><span>반응</span><span className="text-right">관리</span></div>
+      <div className="divide-y divide-slate-100">{visible.map((item) => <article key={item.id} className="grid gap-3 px-4 py-4 hover:bg-slate-50 sm:px-6 lg:grid-cols-[minmax(150px,2fr)_110px_120px_110px_100px_90px] lg:items-center lg:gap-3">
         <Link href={`/admin/sales/${item.id}`} className="break-words font-bold text-slate-950 hover:text-indigo-700">{item.name}</Link>
-        <div><span className="text-xs text-slate-500 md:hidden">최근 업데이트 · </span><time dateTime={item.lastUpdatedAt} className="text-sm text-slate-700">{dateTimeFormatter.format(new Date(item.lastUpdatedAt))}</time></div>
-        <div><span className="text-xs text-slate-500 md:hidden">제안서 제출 · </span><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${item.proposalStatus === "submitted" ? "bg-emerald-50 text-emerald-700" : item.proposalStatus === "planned" ? "bg-amber-50 text-amber-700" : "bg-slate-100 text-slate-600"}`}>{item.proposalStatus ? proposalLabels[item.proposalStatus] ?? item.proposalStatus : "미기록"}</span></div>
-        <div><span className="text-xs text-slate-500 md:hidden">반응 · </span><span className="text-sm text-slate-700">{item.reaction ? reactionLabels[item.reaction] ?? item.reaction : "미기록"}</span></div>
+        <div><span className="text-xs text-slate-500 lg:hidden">방문일 · </span>{item.visitDate ? <time dateTime={item.visitDate} className="text-sm text-slate-700">{item.visitDate}</time> : <span className="text-sm text-slate-400">미기록</span>}</div>
+        <div><span className="text-xs text-slate-500 lg:hidden">최근 업데이트 · </span><time dateTime={item.lastUpdatedAt} className="text-sm text-slate-700">{dateFormatter.format(new Date(item.lastUpdatedAt))}</time></div>
+        <div><span className="text-xs text-slate-500 lg:hidden">제안서 제출 · </span><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${item.proposalStatus === "submitted" ? "bg-emerald-50 text-emerald-700" : item.proposalStatus === "planned" ? "bg-amber-50 text-amber-700" : "bg-slate-100 text-slate-600"}`}>{item.proposalStatus ? proposalLabels[item.proposalStatus] ?? item.proposalStatus : "미기록"}</span></div>
+        <div><span className="text-xs text-slate-500 lg:hidden">반응 · </span><span className="text-sm text-slate-700">{item.reaction ? reactionLabels[item.reaction] ?? item.reaction : "미기록"}</span></div>
+        <div className="lg:text-right"><OrganizationFollowUpDialog organization={item} today={today} /></div>
       </article>)}</div>
       {!loadError && !visible.length && <p className="p-8 text-center text-sm text-slate-500">{normalizedQuery ? "검색 결과가 없습니다." : "등록된 기관이 없습니다. 명함을 등록하면 여기에 표시됩니다."}</p>}
     </section>

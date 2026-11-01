@@ -273,6 +273,41 @@ export async function recordCardVisitDetails(_previous: { error: string; saved: 
   return { error: "", saved: true };
 }
 
+export async function recordOrganizationContactState(_previous: { error: string; saved: boolean }, data: FormData): Promise<{ error: string; saved: boolean }> {
+  const { supabase } = await requireAdmin();
+  const organizationId = field(data, "organization_id");
+  const visitDate = field(data, "visit_date");
+  const visitRegion = field(data, "visit_region", 121);
+  const proposalStatus = field(data, "proposal_status");
+  const reaction = field(data, "reaction");
+  const contactMethod = field(data, "contact_method");
+  const summary = field(data, "summary", 5001);
+  const occurredAt = new Date(`${visitDate}T12:00:00+09:00`);
+  if (!uuidPattern.test(organizationId) || !/^\d{4}-\d{2}-\d{2}$/.test(visitDate)
+    || !Number.isFinite(occurredAt.getTime()) || koreaDateKey(occurredAt) !== visitDate
+    || visitDate > koreaDateKey(new Date())
+    || !visitRegion || visitRegion.length > 120
+    || !["not_submitted", "planned", "submitted"].includes(proposalStatus)
+    || !["interested", "reviewing", "waiting", "neutral", "no_budget", "not_interested", "no_response"].includes(reaction)
+    || !["visit", "call", "email", "referral"].includes(contactMethod)
+    || !summary || summary.length > 5000) {
+    return { error: "방문일, 지역, 제안서 상태, 반응과 특이사항을 확인해 주세요.", saved: false };
+  }
+  const { error } = await supabase.schema("scheduler").rpc("record_organization_contact_state", {
+    p_organization_id: organizationId,
+    p_visit_date: visitDate,
+    p_visit_region: visitRegion,
+    p_proposal_status: proposalStatus,
+    p_reaction: reaction,
+    p_contact_method: contactMethod,
+    p_summary: summary,
+  });
+  if (error) return { error: "후속관리 기록을 저장하지 못했습니다. DB 마이그레이션 적용 여부를 확인해 주세요.", saved: false };
+  revalidatePath("/admin/sales");
+  revalidatePath(salesPath(organizationId));
+  return { error: "", saved: true };
+}
+
 export async function createContact(data: FormData) {
   const { supabase } = await requireAdmin();
   const organization_id = validId(field(data, "organization_id"));

@@ -77,21 +77,26 @@ test("sales dashboard prioritizes overdue follow-ups and distinguishes activity 
 });
 
 test("all sales organizations sort by saved update time and retain the latest recorded statuses", () => {
-  const { buildSalesOrganizationList } = load("src/features/admin/sales-organization-list.ts", {});
+  const followUp = load("src/features/admin/sales-follow-up.ts", {});
+  const { buildSalesOrganizationList } = load("src/features/admin/sales-organization-list.ts", { "./sales-follow-up": followUp });
   const organizations = [
-    { id: "a", name: "가 기관", updated_at: "2026-11-01T00:00:00Z" },
-    { id: "b", name: "나 기관", updated_at: "2026-11-01T01:00:00Z" },
-    { id: "c", name: "다 기관", updated_at: "2026-11-01T02:00:00Z" },
+    { id: "a", name: "가 기관", region: "광주", updated_at: "2026-11-01T00:00:00Z" },
+    { id: "b", name: "나 기관", region: null, updated_at: "2026-11-01T01:00:00Z" },
+    { id: "c", name: "다 기관", region: null, updated_at: "2026-11-01T02:00:00Z" },
   ];
   const activities = [
-    { organization_id: "a", created_at: "2026-11-01T04:00:00Z", reaction: "reviewing", proposal_status: null },
-    { organization_id: "a", created_at: "2026-11-01T03:00:00Z", reaction: "interested", proposal_status: "submitted" },
+    { organization_id: "a", created_at: "2026-11-01T04:00:00Z", occurred_at: "2026-10-28T03:00:00Z", activity_type: "visit", summary: "새로운 상담", visit_region: "광주 북구", contact_method: "call", reaction: "reviewing", proposal_status: null },
+    { organization_id: "a", created_at: "2026-11-01T03:00:00Z", occurred_at: "2026-10-20T03:00:00Z", activity_type: "visit", summary: "기존 상담", reaction: "interested", proposal_status: "submitted" },
   ];
   const rows = buildSalesOrganizationList(organizations, activities);
   assert.equal(rows.map((row) => row.id).join(","), "a,c,b");
   assert.equal(rows[0].lastUpdatedAt, "2026-11-01T04:00:00Z");
   assert.equal(rows[0].reaction, "reviewing");
   assert.equal(rows[0].proposalStatus, "submitted");
+  assert.equal(rows[0].visitDate, "2026-10-28");
+  assert.equal(rows[0].contactRegion, "광주 북구");
+  assert.equal(rows[0].contactMethod, "call");
+  assert.equal(rows[0].notes, "새로운 상담");
   assert.equal(rows[1].proposalStatus, null);
 });
 
@@ -426,6 +431,34 @@ test("card visit popup sends structured details to the visit RPC", async () => {
   assert.equal(written.p_proposal_status, "planned");
   form.set("visit_date", "2026-02-30");
   assert.equal((await actions.recordCardVisitDetails({ error: "", saved: false }, form)).saved, false);
+});
+
+test("organization follow-up saves edited contact state as a new record", async () => {
+  let written;
+  const paths = [];
+  const actions = load("src/app/admin/sales/actions.ts", {
+    "next/cache": { revalidatePath(path) { paths.push(path); } }, "next/navigation": { redirect },
+    "@/server/admin-auth": { requireAdmin: async () => ({ supabase: { schema: () => ({ rpc: async (name, args) => {
+      assert.equal(name, "record_organization_contact_state");
+      written = args;
+      return { error: null };
+    } }) } }) },
+    "@/server/google-calendar": { getCalendarConnection: async () => null },
+  });
+  const form = new FormData();
+  form.set("organization_id", "22222222-2222-2222-2222-222222222222");
+  form.set("visit_date", "2026-10-20");
+  form.set("visit_region", "광주 북구");
+  form.set("proposal_status", "submitted");
+  form.set("reaction", "reviewing");
+  form.set("contact_method", "call");
+  form.set("summary", "담당자가 예산 검토 중");
+  const result = await actions.recordOrganizationContactState({ error: "", saved: false }, form);
+  assert.equal(result.saved, true);
+  assert.equal(written.p_organization_id, "22222222-2222-2222-2222-222222222222");
+  assert.equal(written.p_proposal_status, "submitted");
+  assert.equal(written.p_reaction, "reviewing");
+  assert.ok(paths.includes("/admin/sales"));
 });
 
 test("another business card at the same organization adds a contact without another organization card", async () => {
