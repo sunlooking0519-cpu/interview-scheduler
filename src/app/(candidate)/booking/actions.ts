@@ -5,6 +5,7 @@ import { isBookingDate } from "@/features/booking/dates";
 import { ALL_TIMES } from "@/features/booking/time-slots";
 import { scheduleCalendarSync } from "@/server/calendar-sync";
 import { readResumeTicket, verifyUploadedResume, removeUploadedResume } from "@/server/resumes";
+import { validInterviewerId } from "@/features/booking/interview-owner";
 
 export type CreateInterviewInput = {
   name: string;
@@ -12,6 +13,7 @@ export type CreateInterviewInput = {
   interviewDate: string;
   interviewTime: string;
   resumeTicket?: string;
+  ownerId?: string;
 };
 
 export type CreateInterviewResult =
@@ -41,6 +43,9 @@ export async function createInterview(
   if (!ALL_TIMES.includes(input.interviewTime)) {
     return { success: false, message: "예약 가능한 시간을 선택해 주세요." };
   }
+  if (input.ownerId && !validInterviewerId(input.ownerId)) {
+    return { success: false, message: "면접 담당자 링크를 확인해 주세요." };
+  }
 
   let resumePath = "";
   let resumeUrl: string | undefined;
@@ -61,6 +66,7 @@ export async function createInterview(
       interview_date: input.interviewDate,
       interview_time: input.interviewTime,
       status: "confirmed",
+      ...(input.ownerId ? { owner_id: input.ownerId } : {}),
       ...(resumeUrl ? { resume_url: resumeUrl } : {}),
     });
 

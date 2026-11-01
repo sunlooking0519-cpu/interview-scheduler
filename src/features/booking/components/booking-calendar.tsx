@@ -4,14 +4,14 @@ import { useEffect, useState } from "react";
 import { getBookingDates } from "@/app/(candidate)/booking/availability";
 import { DateCalendar } from "@/features/booking/components/date-calendar";
 
-export function BookingCalendar({ selected, disabled, onSelect }: { selected: string; disabled?: boolean; onSelect: (date: string) => void }) {
+export function BookingCalendar({ selected, disabled, onSelect, ownerId }: { selected: string; disabled?: boolean; onSelect: (date: string) => void; ownerId?: string }) {
   const [dates, setDates] = useState<string[] | null>(null);
   const [error, setError] = useState("");
   useEffect(() => {
     let active = true;
-    getBookingDates().then((result) => { if (active) { setDates(result.dates.filter((row) => row.enabled).map((row) => row.interview_date)); setError(result.error); } }).catch(() => { if (active) setError("예약 날짜를 불러오지 못했습니다."); });
+    getBookingDates(ownerId).then((result) => { if (active) { setDates(result.dates.filter((row) => row.enabled).map((row) => row.interview_date)); setError(result.error); } }).catch(() => { if (active) setError("예약 날짜를 불러오지 못했습니다."); });
     return () => { active = false; };
-  }, []);
+  }, [ownerId]);
   return <div>
     <h2 className="mb-4 font-semibold">면접 날짜</h2>
     <DateCalendar selected={selected} available={error ? [] : dates ?? []} disabled={disabled} onSelect={onSelect} />

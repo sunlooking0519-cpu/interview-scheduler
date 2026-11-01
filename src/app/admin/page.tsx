@@ -3,12 +3,15 @@ import { BookingTable } from "@/features/admin/components/booking-table";
 import { requireInterviewStaff } from "@/server/admin-auth";
 import { getInterviewReservations, type InterviewReservation } from "@/server/interviews";
 import { getUpcomingReservationStats } from "@/features/admin/reservation-stats";
+import { isAdmin } from "../../../lib/supabase/admin-role";
+import { InterviewerBookingLink } from "@/features/admin/components/interviewer-booking-link";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 export default async function AdminPage({ searchParams }: { searchParams: Promise<{ calendar?: string; list?: string }> }) {
   const { user, supabase } = await requireInterviewStaff();
+  const admin = isAdmin(user);
   const { calendar, list } = await searchParams;
   let interviews: InterviewReservation[] = [];
   let loadError = "";
@@ -17,13 +20,15 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
   try {
     const [loaded, feature] = await Promise.all([
       getInterviewReservations(),
-      supabase.schema("scheduler").from("interviews").select("hired_at").limit(1),
+      supabase.schema("scheduler").from("interviews").select(admin ? "hired_at" : "owner_id").limit(1),
     ]);
     interviews = loaded;
     hiringEnabled = !feature.error;
   } catch (error) {
     console.error("Admin dashboard load failed", error);
-    loadError = "예약 데이터를 불러오지 못했습니다. scheduler 스키마의 API 노출 및 관리자 조회 권한을 확인해 주세요.";
+    loadError = admin
+      ? "예약 데이터를 불러오지 못했습니다. scheduler 스키마의 API 노출 및 관리자 조회 권한을 확인해 주세요."
+      : "개인 면접관리 설정이 필요합니다. 최고관리자에게 instructor-private-interviews-migration.sql 적용을 요청해 주세요.";
   }
 
   const counts = getUpcomingReservationStats(interviews);
@@ -39,11 +44,12 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
       <div className="flex flex-wrap items-start justify-between gap-5">
         <div>
           <p className="text-sm font-semibold text-indigo-600">HR WORKSPACE</p>
-          <h1 className="mt-3 text-3xl font-bold">면접 관리 대시보드</h1>
-          <p className="mt-3 text-slate-500">{user.email}님, 지원자의 일정과 채용 현황을 확인하세요.</p>
+          <h1 className="mt-3 text-3xl font-bold">{admin ? "면접 관리 대시보드" : "내 면접 관리"}</h1>
+          <p className="mt-3 text-slate-500">{user.email}님, {admin ? "지원자의 일정과 채용 현황" : "내 예약과 채용 현황"}을 확인하세요.</p>
         </div>
       </div>
       {loadError && <p role="alert" className="mt-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{loadError}</p>}
+      {!admin && <InterviewerBookingLink managerId={user.id} />}
       {!loadError && !hiringEnabled && <p role="status" className="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">강사·채용 기능을 사용하려면 Supabase에 instructor-hiring-migration.sql을 먼저 적용해 주세요. 기존 예약 기능은 계속 사용할 수 있습니다.</p>}
       <p className="mt-5 text-sm text-slate-600">아직 지나지 않은 면접 일정 기준 · 한국시간(KST) · 취소 건 포함</p>
       <div className="my-5 grid grid-cols-2 gap-2 sm:my-8 sm:grid-cols-4 sm:gap-4">
@@ -52,8 +58,8 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
       {calendar === "connected" && <p role="status" className="mb-4 rounded-xl bg-emerald-50 p-4 text-sm text-emerald-800">Google 캘린더를 연결했습니다. 기존 예약도 순차적으로 동기화됩니다.</p>}
       {calendar === "error" && <p role="alert" className="mb-4 rounded-xl bg-red-50 p-4 text-sm text-red-700">Google 연결에 실패했습니다. OAuth 설정과 동의 권한을 확인하고 다시 연결해 주세요.</p>}
       {calendar === "owner" && <p role="alert" className="mb-4 rounded-xl bg-amber-50 p-4 text-sm text-amber-800">다른 관리자의 Google 계정이 연결되어 있습니다. 연결한 관리자가 먼저 연결을 해제해야 합니다.</p>}
-      <TimeSlotManager interviews={interviews} />
-      <BookingTable key={list === "hired" && hiringEnabled ? "hired" : "confirmed"} interviews={interviews} hiringEnabled={hiringEnabled} initialStatus={list === "hired" && hiringEnabled ? "hired" : "confirmed"} />
+      {!loadError && <TimeSlotManager interviews={interviews} ownerId={admin ? undefined : user.id} showGoogle={admin} />}
+      {!loadError && <BookingTable key={list === "hired" && hiringEnabled ? "hired" : "confirmed"} interviews={interviews} hiringEnabled={hiringEnabled} initialStatus={list === "hired" && hiringEnabled ? "hired" : "confirmed"} />}
     </>
   );
 }

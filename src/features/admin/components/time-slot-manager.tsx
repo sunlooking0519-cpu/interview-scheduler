@@ -8,7 +8,7 @@ import { setTimeSlot, closeAllTimeSlots, addBookingDate } from "@/app/admin/time
 import { AdminCalendar } from "@/features/admin/components/admin-calendar";
 import type { InterviewReservation } from "@/server/interviews";
 
-export function TimeSlotManager({ interviews }: { interviews: InterviewReservation[] }) {
+export function TimeSlotManager({ interviews, ownerId, showGoogle = true }: { interviews: InterviewReservation[]; ownerId?: string; showGoogle?: boolean }) {
   const [date, setDate] = useState("");
   const [dates, setDates] = useState<BookingDate[]>([]);
   const [newDate, setNewDate] = useState("");
@@ -21,24 +21,24 @@ export function TimeSlotManager({ interviews }: { interviews: InterviewReservati
 
   useEffect(() => {
     let active = true;
-    getBookingDates().then((result) => {
+    getBookingDates(ownerId).then((result) => {
       if (!active) return;
       setDates(result.dates); setError(result.error);
       const first = result.dates.find((row) => row.interview_date >= koreaToday()) ?? result.dates[0];
       if (first) setDate(first.interview_date); else setLoading(false);
     }).catch(() => { if (active) { setError("예약 날짜를 불러오지 못했습니다."); setLoading(false); } });
     return () => { active = false; };
-  }, []);
+  }, [ownerId]);
 
   useEffect(() => {
     let active = true;
     if (!date) return;
-    getTimeSlots(date).then((result) => {
+    getTimeSlots(date, ownerId).then((result) => {
       if (!active) return;
       setSlots(result.slots); setError(result.error); setLoading(false);
     }).catch(() => { if (active) { setError("시간 설정을 불러오지 못했습니다."); setLoading(false); } });
     return () => { active = false; };
-  }, [date]);
+  }, [date, ownerId]);
 
   async function addDate() {
     if (busy.current || !newDate) return;
@@ -46,10 +46,10 @@ export function TimeSlotManager({ interviews }: { interviews: InterviewReservati
     try {
       const result = await addBookingDate(newDate);
       if (result.error) { setError(result.error); return; }
-      const refreshed = await getBookingDates();
+      const refreshed = await getBookingDates(ownerId);
       setDates(refreshed.dates);
       if (refreshed.error) { setError(refreshed.error); return; }
-      const times = await getTimeSlots(newDate);
+      const times = await getTimeSlots(newDate, ownerId);
       setSlots(times.slots); setError(times.error); setLoading(false);
       setDate(newDate);
       setMessage("날짜를 추가했습니다. 예약을 받을 시간을 열어 주세요.");
@@ -67,7 +67,7 @@ export function TimeSlotManager({ interviews }: { interviews: InterviewReservati
       if (result.error) { setError(result.error); return; }
       setSlots((rows) => setSlotEnabled(rows, time, enabled));
       if (!dates.some((row) => row.interview_date === date)) {
-        const refreshed = await getBookingDates();
+        const refreshed = await getBookingDates(ownerId);
         if (!refreshed.error) setDates(refreshed.dates);
       }
       setMessage(`${time} 예약을 ${enabled ? "열었습니다" : "닫았습니다"}.`);
@@ -90,7 +90,7 @@ export function TimeSlotManager({ interviews }: { interviews: InterviewReservati
   return <section className="mb-8 rounded-2xl border border-slate-200 bg-white p-4 md:p-6">
     <h2 className="text-lg font-bold">예약 가능 시간 관리</h2>
     <p className="mt-2 text-sm text-slate-500">모든 시간은 기본적으로 닫혀 있습니다. 직접 연 시간만 지원자가 예약할 수 있습니다. 즉시 저장되며 기존 예약은 유지됩니다.</p>
-    <AdminCalendar selected={date} disabled={saving} interviews={interviews} onSelect={(value) => { if (date !== value) { setDate(value); setLoading(true); } setNewDate(value); setError(""); setMessage(""); }} />
+    <AdminCalendar selected={date} disabled={saving} interviews={interviews} showGoogle={showGoogle} onSelect={(value) => { if (date !== value) { setDate(value); setLoading(true); } setNewDate(value); setError(""); setMessage(""); }} />
     {date && <p className="mt-4 text-sm font-semibold">시간 관리: {date}</p>}
     {date && !dates.some((row) => row.interview_date === date) && <button type="button" disabled={saving || date < koreaToday()} onClick={() => void addDate()} className="mt-3 min-h-11 w-full rounded-xl bg-indigo-600 px-4 text-sm font-semibold text-white disabled:opacity-50">선택일을 예약 날짜로 등록 (기본 닫힘)</button>}
     <button type="button" disabled={!date || loading || saving || !!error} onClick={() => void closeAll()} className="mt-4 min-h-11 w-full rounded-xl border border-red-200 px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50">선택한 날짜 마감 · 전체 시간 닫기</button>

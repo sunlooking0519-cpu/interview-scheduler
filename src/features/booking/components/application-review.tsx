@@ -84,7 +84,7 @@ export function ApplicationReview() {
       <p className="font-semibold">면접 예약 · {row.status === "confirmed" ? "확정" : row.status === "hired" ? "채용" : "취소"}</p>
       <fieldset disabled={saving || row.status !== "confirmed"} className="space-y-6">
         <legend className="mb-3 text-sm font-semibold">면접 날짜</legend>
-        <BookingCalendar selected={row.interview_date} disabled={saving || row.status !== "confirmed"} onSelect={(value) => change(row.id, "interview_date", value)} />
+        <BookingCalendar selected={row.interview_date} ownerId={row.owner_id ?? undefined} disabled={saving || row.status !== "confirmed"} onSelect={(value) => change(row.id, "interview_date", value)} />
         <div>
           <div aria-live="polite" aria-atomic="true" className="mb-5 rounded-xl border border-indigo-200 bg-indigo-50 p-4 sm:p-5">
             <p className="text-sm font-semibold text-indigo-700">선택한 일정</p>
@@ -92,7 +92,7 @@ export function ApplicationReview() {
             <p className="mt-1 text-2xl font-bold tracking-tight text-indigo-700 sm:text-3xl">{row.interview_time}<span className="ml-2 text-sm font-medium tracking-normal text-indigo-600">한국 표준시(KST)</span></p>
           </div>
           <h3 className="text-sm font-semibold">면접 시간 · 30분</h3>
-          <AvailableTimeButtons key={`${row.id}-${originals[String(row.id)]?.date}-${originals[String(row.id)]?.time}`} date={row.interview_date} selected={row.interview_time} originalDate={row.status === "confirmed" ? originals[String(row.id)]?.date : undefined} originalTime={originals[String(row.id)]?.time} disabled={saving || row.status !== "confirmed"} onSelect={(time) => change(row.id, "interview_time", time)} />
+          <AvailableTimeButtons key={`${row.id}-${originals[String(row.id)]?.date}-${originals[String(row.id)]?.time}`} date={row.interview_date} ownerId={row.owner_id ?? undefined} selected={row.interview_time} originalDate={row.status === "confirmed" ? originals[String(row.id)]?.date : undefined} originalTime={originals[String(row.id)]?.time} disabled={saving || row.status !== "confirmed"} onSelect={(time) => change(row.id, "interview_time", time)} />
         </div>
       </fieldset>
       {row.status === "confirmed" && <button disabled={saving} className="rounded-xl bg-indigo-600 px-5 py-3 text-sm font-semibold text-white disabled:bg-slate-300">{saving ? "저장 중..." : "변경 저장"}</button>}

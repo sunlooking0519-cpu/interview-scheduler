@@ -3,12 +3,16 @@
 import { createClient } from "../../../../lib/supabase/server";
 import { isBookingDate, type BookingDate } from "@/features/booking/dates";
 import type { TimeSlot } from "@/features/booking/time-slots";
+import { validInterviewerId } from "@/features/booking/interview-owner";
 
-export async function getTimeSlots(date: string): Promise<{ slots: TimeSlot[]; error: string }> {
+export async function getTimeSlots(date: string, ownerId?: string): Promise<{ slots: TimeSlot[]; error: string }> {
   if (!isBookingDate(date)) return { slots: [], error: "예약 가능한 날짜를 선택해 주세요." };
+  if (ownerId && !validInterviewerId(ownerId)) return { slots: [], error: "면접 담당자 링크를 확인해 주세요." };
   try {
     const supabase = await createClient();
-    const { data, error } = await supabase.schema("scheduler").rpc("get_interview_time_slots", { p_date: date });
+    const { data, error } = ownerId
+      ? await supabase.schema("scheduler").rpc("get_interview_time_slots_for_owner", { p_date: date, p_owner: ownerId })
+      : await supabase.schema("scheduler").rpc("get_interview_time_slots", { p_date: date });
     if (error) return { slots: [], error: "예약 가능 시간을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요." };
     return { slots: data ?? [], error: "" };
   } catch {
@@ -16,10 +20,13 @@ export async function getTimeSlots(date: string): Promise<{ slots: TimeSlot[]; e
   }
 }
 
-export async function getBookingDates(): Promise<{ dates: BookingDate[]; error: string }> {
+export async function getBookingDates(ownerId?: string): Promise<{ dates: BookingDate[]; error: string }> {
+  if (ownerId && !validInterviewerId(ownerId)) return { dates: [], error: "면접 담당자 링크를 확인해 주세요." };
   try {
     const supabase = await createClient();
-    const { data, error } = await supabase.schema("scheduler").rpc("get_interview_dates");
+    const { data, error } = ownerId
+      ? await supabase.schema("scheduler").rpc("get_interview_dates_for_owner", { p_owner: ownerId })
+      : await supabase.schema("scheduler").rpc("get_interview_dates");
     if (error) return { dates: [], error: "예약 날짜를 불러오지 못했습니다." };
     return { dates: data ?? [], error: "" };
   } catch { return { dates: [], error: "예약 날짜 조회 서비스에 연결할 수 없습니다." }; }

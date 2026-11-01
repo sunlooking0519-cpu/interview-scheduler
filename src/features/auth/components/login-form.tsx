@@ -5,7 +5,7 @@ import { useRef, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { findCandidateReservations } from "@/app/(candidate)/application/actions";
 
-export function LoginForm() {
+export function LoginForm({ managerId }: { managerId?: string }) {
   const router = useRouter();
   const [isPending, setIsPending] = useState(false);
   const [error, setError] = useState("");
@@ -34,7 +34,7 @@ export function LoginForm() {
         }
       }
       sessionStorage.setItem("candidate", JSON.stringify(candidate));
-      router.push(isReview ? "/application" : "/booking");
+      router.push(isReview ? "/application" : managerId ? `/booking?manager=${encodeURIComponent(managerId)}` : "/booking");
     } catch {
       setError("요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.");
     } finally {

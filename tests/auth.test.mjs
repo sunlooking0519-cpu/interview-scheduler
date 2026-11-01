@@ -30,6 +30,7 @@ function load(path, imports) {
 const { isAdmin, isInterviewStaff } = load("lib/supabase/admin-role.ts", {});
 const timeSlots = load("src/features/booking/time-slots.ts", {});
 const bookingDates = load("src/features/booking/dates.ts", {});
+const interviewOwner = load("src/features/booking/interview-owner.ts", {});
 const admin = { id: "admin-id", email: "admin@example.com", app_metadata: { role: "admin" } };
 const redirect = (path) => { throw new Error(`REDIRECT:${path}`); };
 
@@ -526,6 +527,7 @@ test("booking persists verified resume URLs and cleans files on a slot conflict"
     let saved, cleaned = false;
     const action = load("src/app/(candidate)/booking/actions.ts", {
       "@/features/booking/dates": bookingDates, "@/features/booking/time-slots": timeSlots,
+      "@/features/booking/interview-owner": interviewOwner,
       "@/server/resumes": { readResumeTicket: () => "uploads/file.pdf", verifyUploadedResume: async () => "https://storage.example/resume.pdf", removeUploadedResume: async () => { cleaned = true; } },
       "../../../../lib/supabase/server": { createClient: async () => ({ schema: () => ({ from: () => ({ insert: async (row) => { saved = row; return { error: conflict ? { code: "23505" } : null }; } }) }) }) },
     });
@@ -677,7 +679,7 @@ test("calendar sync endpoint requires the correct server secret", async () => {
 
 test("Google calendar actions verify administrator access before private reads", async () => {
   const actions = load("src/app/admin/calendar-actions.ts", {
-    "@/server/admin-auth": { requireInterviewStaff: async () => { throw new Error("DENIED"); } },
+    "@/server/admin-auth": { requireAdmin: async () => { throw new Error("DENIED"); } },
     "@/server/google-calendar": {}, "@/server/calendar-sync": {}, "../../../lib/supabase/service": {}, "next/cache": {},
   });
   await assert.rejects(() => actions.getGoogleCalendarMonth("2026-10"), /DENIED/);
@@ -688,7 +690,7 @@ test("Google calendar actions verify administrator access before private reads",
 test("admin November calendar reads events from primary and another Google calendar", async () => {
   const queried = [];
   const actions = load("src/app/admin/calendar-actions.ts", {
-    "@/server/admin-auth": { requireInterviewStaff: async () => ({ user: admin }) },
+    "@/server/admin-auth": { requireAdmin: async () => ({ user: admin }) },
     "@/server/google-calendar": {
       calendarConfig() {}, getCalendarConnection: async () => ({ owner_id: admin.id, calendar_id: "primary" }),
       calendarAccessToken: async () => "token", googleCalendarListRequest: async () => ({ ok: true, status: 200, json: async () => ({ items: [{ id: "primary@example.com", summary: "기본", primary: true }, { id: "samsung@example.com", summary: "삼성 일정" }] }) }),
@@ -708,7 +710,7 @@ test("admin November calendar reads events from primary and another Google calen
 
 test("old Google authorization keeps primary events and requests reconnection", async () => {
   const actions = load("src/app/admin/calendar-actions.ts", {
-    "@/server/admin-auth": { requireInterviewStaff: async () => ({ user: admin }) },
+    "@/server/admin-auth": { requireAdmin: async () => ({ user: admin }) },
     "@/server/google-calendar": {
       calendarConfig() {}, getCalendarConnection: async () => ({ owner_id: admin.id, calendar_id: "primary" }),
       calendarAccessToken: async () => "token", googleCalendarListRequest: async () => ({ ok: false, status: 403 }),
@@ -793,7 +795,7 @@ test("admin time controls authorize before saving and reject unsupported slots",
   const { setTimeSlot, closeAllTimeSlots, addBookingDate } = load("src/app/admin/time-actions.ts", {
     "@/server/admin-auth": { requireInterviewStaff: async () => {
       authorized++;
-      return { supabase: { schema(name) {
+      return { user: admin, supabase: { schema(name) {
         assert.equal(name, "scheduler");
         return { from(table) {
           assert.equal(table, "interview_time_slots");
@@ -803,11 +805,14 @@ test("admin time controls authorize before saving and reject unsupported slots",
     } },
     "@/features/booking/dates": bookingDates,
     "@/features/booking/time-slots": timeSlots,
+    "@/features/booking/interview-owner": interviewOwner,
+    "../../../lib/supabase/admin-role": { isAdmin },
     "next/cache": { revalidatePath() {} },
   });
   assert.equal((await setTimeSlot("2026-10-12", "18:30", true)).error, "");
   assert.equal(saved[0].interview_time, "18:30");
   assert.equal(saved[0].enabled, true);
+  assert.equal(saved[0].owner_id, interviewOwner.DEFAULT_SLOT_OWNER);
   assert.ok((await setTimeSlot("2026-10-12", "21:30", true)).error);
   assert.equal(authorized, 2);
   assert.equal(saved.length, 1);
@@ -819,6 +824,21 @@ test("admin time controls authorize before saving and reject unsupported slots",
   assert.equal((await addBookingDate("2099-01-15")).error, "");
   assert.equal(saved[2].length, 25);
   assert.equal(saved[2].every((row) => row.interview_date === "2099-01-15" && row.enabled === false), true);
+});
+
+test("middle manager opens only a slot owned by their account", async () => {
+  const owner = "69fb47c1-c94a-4b02-8cfd-717f7b2ace4a";
+  let saved;
+  const { setTimeSlot } = load("src/app/admin/time-actions.ts", {
+    "@/server/admin-auth": { requireInterviewStaff: async () => ({ user: { id: owner, app_metadata: { role: "instructor" } }, supabase: { schema: () => ({ from: () => ({ upsert: async (row, options) => { saved = { row, options }; return { error: null }; } }) }) } }) },
+    "@/features/booking/dates": bookingDates,
+    "@/features/booking/time-slots": timeSlots,
+    "@/features/booking/interview-owner": interviewOwner,
+    "../../../lib/supabase/admin-role": { isAdmin },
+  });
+  assert.equal((await setTimeSlot("2027-01-15", "12:00", true)).error, "");
+  assert.equal(saved.row.owner_id, owner);
+  assert.equal(saved.options.onConflict, "owner_id,interview_date,interview_time");
 });
 
 test("availability requests use date-scoped RPC and fail closed", async () => {
@@ -833,11 +853,32 @@ test("availability requests use date-scoped RPC and fail closed", async () => {
       } };
     } }) },
     "@/features/booking/dates": bookingDates,
+    "@/features/booking/interview-owner": interviewOwner,
   });
   const result = await getTimeSlots("2026-10-12");
   assert.equal(queried, true);
   assert.equal(result.slots.length, 0);
   assert.ok(result.error);
+});
+
+test("manager booking availability uses only the dedicated owner RPC", async () => {
+  const owner = "69fb47c1-c94a-4b02-8cfd-717f7b2ace4a";
+  const calls = [];
+  const availability = load("src/app/(candidate)/booking/availability.ts", {
+    "../../../../lib/supabase/server": { createClient: async () => ({ schema: () => ({ rpc: async (name, args) => {
+      calls.push({ name, args });
+      return { data: [], error: null };
+    } }) }) },
+    "@/features/booking/dates": bookingDates,
+    "@/features/booking/interview-owner": interviewOwner,
+  });
+  assert.equal((await availability.getBookingDates(owner)).error, "");
+  assert.equal((await availability.getTimeSlots("2027-01-15", owner)).error, "");
+  assert.deepEqual(calls.map((call) => call.name), ["get_interview_dates_for_owner", "get_interview_time_slots_for_owner"]);
+  assert.equal(calls[0].args.p_owner, owner);
+  assert.equal(calls[1].args.p_owner, owner);
+  assert.ok((await availability.getBookingDates("bad-owner")).error);
+  assert.equal(calls.length, 2);
 });
 
 test("candidate review scopes RPC requests and rejects invalid updates", async () => {
@@ -853,6 +894,7 @@ test("candidate review scopes RPC requests and rejects invalid updates", async (
     } }) },
     "@/features/booking/dates": bookingDates,
     "@/features/booking/time-slots": timeSlots,
+    "@/features/booking/interview-owner": interviewOwner,
   });
   const candidate = { name: " 홍길동 ", phone: "010-1234-5678" };
   assert.equal((await actions.findCandidateReservations(candidate)).error, "");
@@ -881,6 +923,7 @@ test("candidate booking accepts only name and phone and omits email in insert", 
     }) },
     "@/features/booking/dates": bookingDates,
     "@/features/booking/time-slots": timeSlots,
+    "@/features/booking/interview-owner": interviewOwner,
   });
   const input = { name: " 홍길동 ", phone: " 010-1234-5678 ", interviewDate: "2026-10-12", interviewTime: "10:00" };
   assert.equal((await createInterview(input)).success, true);
@@ -890,6 +933,9 @@ test("candidate booking accepts only name and phone and omits email in insert", 
   inserted = undefined;
   assert.equal((await createInterview({ ...input, phone: "invalid" })).success, false);
   assert.equal(inserted, undefined);
+  const owner = "69fb47c1-c94a-4b02-8cfd-717f7b2ace4a";
+  assert.equal((await createInterview({ ...input, ownerId: owner })).success, true);
+  assert.equal(inserted.owner_id, owner);
 });
 
 test("only trusted app_metadata grants administrator access", () => {
@@ -1056,17 +1102,36 @@ test("reservation listing checks authorization and queries scheduler.interviews"
   const query = {
     from(table) { calls.push(table); return this; },
     select() { return this; },
+    eq(field, value) { calls.push(`${field}=${value}`); return this; },
     order() { return this; },
     then(resolve) { resolve({ data: rows, error: null }); },
   };
   const { getInterviewReservations } = load("src/server/interviews.ts", {
     "server-only": {}, "@/server/admin-auth": { requireInterviewStaff: async () => {
       calls.push("authorized");
-      return { supabase: { schema(name) { calls.push(name); return query; } } };
+      return { user: admin, supabase: { schema(name) { calls.push(name); return query; } } };
     } },
+    "../../lib/supabase/admin-role": { isAdmin },
   });
   assert.equal(await getInterviewReservations(), rows);
   assert.deepEqual(calls, ["authorized", "scheduler", "interviews"]);
+});
+
+test("middle manager reservation listing scopes reads to their own account", async () => {
+  const owner = "69fb47c1-c94a-4b02-8cfd-717f7b2ace4a";
+  const calls = [];
+  const query = {
+    from() { return this; }, select() { return this; }, order() { return this; },
+    eq(field, value) { calls.push([field, value]); return this; },
+    then(resolve) { resolve({ data: [], error: null }); },
+  };
+  const { getInterviewReservations } = load("src/server/interviews.ts", {
+    "server-only": {},
+    "@/server/admin-auth": { requireInterviewStaff: async () => ({ user: { id: owner, app_metadata: { role: "instructor" } }, supabase: { schema: () => query } }) },
+    "../../lib/supabase/admin-role": { isAdmin },
+  });
+  assert.deepEqual(await getInterviewReservations(), []);
+  assert.deepEqual(calls, [["owner_id", owner]]);
 });
 
 test("proxy preserves refreshed cookies on allowed and denied requests without a login loop", async () => {

@@ -1,11 +1,11 @@
 import { randomBytes } from "node:crypto";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { requireInterviewStaff } from "@/server/admin-auth";
+import { requireAdmin } from "@/server/admin-auth";
 import { CALENDAR_SCOPE, CALENDAR_LIST_SCOPE, calendarConfig, getCalendarConnection } from "@/server/google-calendar";
 
 export async function GET() {
-  const { user } = await requireInterviewStaff();
+  const { user } = await requireAdmin();
   try {
     const config = calendarConfig();
     const connection = await getCalendarConnection();

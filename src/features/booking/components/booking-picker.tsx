@@ -13,7 +13,7 @@ import { RESUME_TYPES, resumeError } from "@/features/booking/resume";
 
 type Candidate = { name: string; phone: string };
 
-export function BookingPicker() {
+export function BookingPicker({ ownerId }: { ownerId?: string }) {
   const [date, setDate] = useState("");
   const [time, setTime] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -60,6 +60,7 @@ export function BookingPicker() {
       phone: candidate.phone,
       interviewDate: date,
       interviewTime: time,
+      ownerId,
       resumeTicket: ticket,
     });
 
@@ -82,11 +83,11 @@ export function BookingPicker() {
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
       <section className="rounded-2xl border border-slate-200 bg-white p-4 md:p-8">
-        <BookingCalendar selected={date} disabled={isSubmitting} onSelect={(value) => { setDate(value); setTime(""); setErrorMessage(""); }} />
+        <BookingCalendar selected={date} ownerId={ownerId} disabled={isSubmitting} onSelect={(value) => { setDate(value); setTime(""); setErrorMessage(""); }} />
         <fieldset className="mt-8" disabled={!date || isSubmitting}>
           <legend className="font-semibold">면접 시간 <span className="text-xs font-normal text-slate-500">· 30분</span></legend>
           <p className="mt-2 text-sm text-slate-500">{date ? formatInterviewDate(date) : "먼저 예약 가능한 날짜를 선택해 주세요."}</p>
-          <AvailableTimeButtons date={date} selected={time} disabled={isSubmitting} onSelect={(value) => { setTime(value); setErrorMessage(""); }} />
+          <AvailableTimeButtons date={date} ownerId={ownerId} selected={time} disabled={isSubmitting} onSelect={(value) => { setTime(value); setErrorMessage(""); }} />
         </fieldset>
       </section>
       <aside className="self-start rounded-2xl border border-slate-200 bg-white p-5 md:p-7">

@@ -7,7 +7,7 @@ import { ALL_TIMES } from "@/features/booking/time-slots";
 import { scheduleCalendarSync } from "@/server/calendar-sync";
 
 export type CandidateIdentity = { name: string; phone: string };
-export type CandidateReservation = { id: string | number; interview_date: string; interview_time: string; status: "confirmed" | "cancelled" | "hired" };
+export type CandidateReservation = { id: string | number; interview_date: string; interview_time: string; status: "confirmed" | "cancelled" | "hired"; owner_id?: string | null };
 
 function identity(input: CandidateIdentity) {
   const name = typeof input?.name === "string" ? input.name.trim() : "";
@@ -33,7 +33,13 @@ export async function findCandidateReservations(input: CandidateIdentity): Promi
   if (!candidate) return { data: [], error: "이름과 전화번호를 다시 입력해 주세요." };
   try {
     const supabase = await createClient();
-    const { data, error } = await supabase.schema("scheduler").rpc("find_candidate_reservations", { p_name: candidate.name, p_phone: candidate.phone });
+    const args = { p_name: candidate.name, p_phone: candidate.phone };
+    let { data, error } = await supabase.schema("scheduler").rpc("find_candidate_reservations_with_owner", args);
+    if (error?.code === "PGRST202" || error?.code === "42883") {
+      const fallback = await supabase.schema("scheduler").rpc("find_candidate_reservations", args);
+      data = fallback.data;
+      error = fallback.error;
+    }
     if (error) return { data: [], error: "예약 내역을 조회할 수 없습니다. 관리자에게 문의해 주세요." };
     return { data: (data ?? []) as CandidateReservation[], error: "" };
   } catch {
