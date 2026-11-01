@@ -77,13 +77,21 @@ export default async function SalesPage({ searchParams }: {
       if (batch.length < 1000) break;
     }
     let hasProposalStatus = true;
+    let hasManagementDate = true;
     for (let offset = 0; ; offset += 1000) {
-      const columns = `id,organization_id,contact_id,activity_type,occurred_at,created_at,summary,follow_up_round,reaction${hasProposalStatus ? ",proposal_status,visit_region,contact_method" : ""}`;
+      const columns = `id,organization_id,contact_id,activity_type,occurred_at,created_at,summary,follow_up_round,reaction${hasProposalStatus ? ",proposal_status,visit_region,contact_method" : ""}${hasManagementDate ? ",management_updated_on" : ""}`;
       const result = await db.from("sales_activities").select(columns)
         .order("created_at", { ascending: false }).order("id", { ascending: false }).range(offset, offset + 999);
+      if (result.error && hasManagementDate && ["42703", "PGRST204"].includes(result.error.code)) {
+        hasManagementDate = false;
+        offset = -1000;
+        allActivities.length = 0;
+        continue;
+      }
       if (result.error && hasProposalStatus && ["42703", "PGRST204"].includes(result.error.code)) {
         hasProposalStatus = false;
         offset = -1000;
+        allActivities.length = 0;
         continue;
       }
       if (result.error) { loadError = true; break; }

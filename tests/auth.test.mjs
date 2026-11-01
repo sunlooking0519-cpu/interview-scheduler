@@ -100,6 +100,23 @@ test("all sales organizations sort by saved update time and retain the latest re
   assert.equal(rows[1].proposalStatus, null);
 });
 
+test("a follow-up's selected update date controls the list without changing its visit date", () => {
+  const followUp = load("src/features/admin/sales-follow-up.ts", {});
+  const { buildSalesOrganizationList } = load("src/features/admin/sales-organization-list.ts", { "./sales-follow-up": followUp });
+  const organizations = [
+    { id: "edited", name: "수정 기관", region: "광주", updated_at: "2026-11-01T08:00:00Z" },
+    { id: "other", name: "다른 기관", region: "전북", updated_at: "2026-10-20T08:00:00Z" },
+  ];
+  const activities = [{ organization_id: "edited", created_at: "2026-11-01T08:00:00Z",
+    management_updated_on: "2026-10-10", occurred_at: "2026-09-15T03:00:00Z",
+    activity_type: "visit", summary: "후속 관리", reaction: "reviewing", proposal_status: "submitted" }];
+  const rows = buildSalesOrganizationList(organizations, activities);
+  assert.equal(rows.map((row) => row.id).join(","), "other,edited");
+  assert.equal(rows[1].lastUpdatedAt, "2026-10-10T03:00:00.000Z");
+  assert.equal(rows[1].visitDate, "2026-09-15");
+  assert.equal(rows[1].proposalStatus, "submitted");
+});
+
 test("sales organization filters combine institution type, region aliases, and contact name", () => {
   const followUp = load("src/features/admin/sales-follow-up.ts", {});
   const { salesOrganizationCategory, salesRegionGroup, filterSalesOrganizationList } = load(
@@ -481,13 +498,17 @@ test("organization follow-up saves edited contact state as a new record", async 
   form.set("proposal_status", "submitted");
   form.set("reaction", "reviewing");
   form.set("contact_method", "call");
+  form.set("update_date", "2026-10-29");
   form.set("summary", "담당자가 예산 검토 중");
   const result = await actions.recordOrganizationContactState({ error: "", saved: false }, form);
   assert.equal(result.saved, true);
   assert.equal(written.p_organization_id, "22222222-2222-2222-2222-222222222222");
   assert.equal(written.p_proposal_status, "submitted");
   assert.equal(written.p_reaction, "reviewing");
+  assert.equal(written.p_update_date, "2026-10-29");
   assert.ok(paths.includes("/admin/sales"));
+  form.set("update_date", "2026-02-30");
+  assert.equal((await actions.recordOrganizationContactState({ error: "", saved: false }, form)).saved, false);
 });
 
 test("another business card at the same organization adds a contact without another organization card", async () => {

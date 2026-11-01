@@ -4,6 +4,7 @@ export type SalesOrganizationRow = { id: string; name: string; region: string | 
 export type SalesStatusActivity = {
   organization_id: string;
   created_at: string;
+  management_updated_on?: string | null;
   occurred_at?: string;
   activity_type?: string;
   summary?: string;
@@ -69,16 +70,17 @@ export function buildSalesOrganizationList(
   organizations: SalesOrganizationRow[], activities: SalesStatusActivity[],
 ): SalesOrganizationListRow[] {
   const statuses = new Map<string, {
-    lastActivityAt: string; visitDate: string | null; contactRegion: string | null;
+    lastActivityAt: string; managementUpdatedOn: string | null; visitDate: string | null; contactRegion: string | null;
     contactMethod: string | null; notes: string | null; proposalStatus: string | null; reaction: string | null;
   }>();
   for (const activity of activities) {
     const current = statuses.get(activity.organization_id) ?? {
-      lastActivityAt: "", visitDate: null, contactRegion: null,
+      lastActivityAt: "", managementUpdatedOn: null, visitDate: null, contactRegion: null,
       contactMethod: null, notes: null, proposalStatus: null, reaction: null,
     };
     if (activity.created_at > current.lastActivityAt) {
       current.lastActivityAt = activity.created_at;
+      current.managementUpdatedOn = activity.management_updated_on ?? null;
     }
     // The query is newest first. A later note without a proposal update keeps the previous status.
     if (current.proposalStatus === null && activity.proposal_status) current.proposalStatus = activity.proposal_status;
@@ -97,7 +99,9 @@ export function buildSalesOrganizationList(
     const status = statuses.get(organization.id);
     return {
       ...organization,
-      lastUpdatedAt: status?.lastActivityAt && status.lastActivityAt > organization.updated_at ? status.lastActivityAt : organization.updated_at,
+      lastUpdatedAt: status?.managementUpdatedOn
+        ? new Date(`${status.managementUpdatedOn}T12:00:00+09:00`).toISOString()
+        : status?.lastActivityAt && status.lastActivityAt > organization.updated_at ? status.lastActivityAt : organization.updated_at,
       visitDate: status?.visitDate ?? null,
       contactRegion: status?.contactRegion ?? organization.region ?? "",
       contactMethod: status?.contactMethod ?? "visit",

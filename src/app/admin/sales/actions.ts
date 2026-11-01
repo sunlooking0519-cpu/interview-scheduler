@@ -281,17 +281,21 @@ export async function recordOrganizationContactState(_previous: { error: string;
   const proposalStatus = field(data, "proposal_status");
   const reaction = field(data, "reaction");
   const contactMethod = field(data, "contact_method");
+  const updateDate = field(data, "update_date");
   const summary = field(data, "summary", 5001);
   const occurredAt = new Date(`${visitDate}T12:00:00+09:00`);
+  const updatedAt = new Date(`${updateDate}T12:00:00+09:00`);
   if (!uuidPattern.test(organizationId) || !/^\d{4}-\d{2}-\d{2}$/.test(visitDate)
     || !Number.isFinite(occurredAt.getTime()) || koreaDateKey(occurredAt) !== visitDate
     || visitDate > koreaDateKey(new Date())
+    || !/^\d{4}-\d{2}-\d{2}$/.test(updateDate)
+    || !Number.isFinite(updatedAt.getTime()) || koreaDateKey(updatedAt) !== updateDate
     || !visitRegion || visitRegion.length > 120
     || !["not_submitted", "planned", "submitted"].includes(proposalStatus)
     || !["interested", "reviewing", "waiting", "neutral", "no_budget", "not_interested", "no_response"].includes(reaction)
     || !["visit", "call", "email", "referral"].includes(contactMethod)
     || !summary || summary.length > 5000) {
-    return { error: "방문일, 지역, 제안서 상태, 반응과 특이사항을 확인해 주세요.", saved: false };
+    return { error: "방문일, 업데이트 날짜, 지역, 제안서 상태, 반응과 특이사항을 확인해 주세요.", saved: false };
   }
   const { error } = await supabase.schema("scheduler").rpc("record_organization_contact_state", {
     p_organization_id: organizationId,
@@ -301,6 +305,7 @@ export async function recordOrganizationContactState(_previous: { error: string;
     p_reaction: reaction,
     p_contact_method: contactMethod,
     p_summary: summary,
+    p_update_date: updateDate,
   });
   if (error) return { error: "후속관리 기록을 저장하지 못했습니다. DB 마이그레이션 적용 여부를 확인해 주세요.", saved: false };
   revalidatePath("/admin/sales");
