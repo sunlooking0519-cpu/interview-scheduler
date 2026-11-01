@@ -1,4 +1,3 @@
-import { logoutAdmin } from "@/app/admin/actions";
 import { TimeSlotManager } from "@/features/admin/components/time-slot-manager";
 import { BookingTable } from "@/features/admin/components/booking-table";
 import { requireInterviewStaff } from "@/server/admin-auth";
@@ -43,9 +42,6 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
           <h1 className="mt-3 text-3xl font-bold">면접 관리 대시보드</h1>
           <p className="mt-3 text-slate-500">{user.email}님, 지원자의 일정과 채용 현황을 확인하세요.</p>
         </div>
-        <form action={logoutAdmin}>
-          <button type="submit" className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">로그아웃</button>
-        </form>
       </div>
       {loadError && <p role="alert" className="mt-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{loadError}</p>}
       {!loadError && !hiringEnabled && <p role="status" className="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">강사·채용 기능을 사용하려면 Supabase에 instructor-hiring-migration.sql을 먼저 적용해 주세요. 기존 예약 기능은 계속 사용할 수 있습니다.</p>}

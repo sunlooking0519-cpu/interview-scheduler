@@ -1,6 +1,7 @@
 export type StaffAccount = {
   id: string; email: string; name: string; role: string;
   requestedRole: string; confirmed: boolean; createdAt: string;
+  promotionCandidateId?: string;
 };
 
 export type HiredTeacher = {

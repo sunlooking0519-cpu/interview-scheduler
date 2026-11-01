@@ -31,6 +31,17 @@ const bookingDates = load("src/features/booking/dates.ts", {});
 const admin = { id: "admin-id", email: "admin@example.com", app_metadata: { role: "admin" } };
 const redirect = (path) => { throw new Error(`REDIRECT:${path}`); };
 
+test("promotion requests match one hired reservation and reject mismatched identity", () => {
+  const { matchingHiredCandidate } = load("src/features/admin/promotion-request.ts", {});
+  const hired = { id: 12, name: "홍길동", phone: "010-1234-5678", email: null, hired_at: "2026-10-25T00:00:00Z" };
+  const candidate = { id: 13, name: "김영희", phone: "010-2222-3333", email: "teacher@example.com", hired_at: null };
+  assert.equal(matchingHiredCandidate([hired, candidate], "홍길동", "01012345678", "new@example.com")?.id, 12);
+  assert.equal(matchingHiredCandidate([hired, candidate], "홍길동", "01099999999", "new@example.com"), null);
+  assert.equal(matchingHiredCandidate([hired, candidate], "김영희", "01022223333", "teacher@example.com"), null);
+  assert.equal(matchingHiredCandidate([{ ...hired, email: "other@example.com" }], "홍길동", "01012345678", "new@example.com"), null);
+  assert.equal(matchingHiredCandidate([hired, { ...hired, id: 14 }], "홍길동", "01012345678", "new@example.com"), null);
+});
+
 test("sales dashboard prioritizes overdue follow-ups and distinguishes activity dates from scheduled work", () => {
   const followUp = load("src/features/admin/sales-follow-up.ts", {});
   const { buildSalesDashboard } = load("src/features/admin/sales-dashboard-model.ts", { "./sales-follow-up": followUp });
@@ -887,7 +898,7 @@ test("member approval protects administrators and grants only confirmed instruct
   const { setInstructorAccess } = load("src/app/admin/members/actions.ts", {
     "next/navigation": { redirect }, "next/cache": { revalidatePath() {} },
     "@/server/admin-auth": { requireAdmin: async () => ({ user: admin }) },
-    "../../../../lib/supabase/service": { createServiceClient: () => ({ schema: () => ({ from: () => ({ select: () => ({ limit: async () => ({ error: null }) }) }) }), auth: { admin: {
+    "../../../../lib/supabase/service": { createServiceClient: () => ({ schema: () => ({ from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { id: 7, name: "김강사", email: null, hired_at: "2026-11-01" }, error: null }) }) }) }) }), auth: { admin: {
       getUserById: async () => ({ data: { user: target }, error: null }),
       updateUserById: async (_id, attributes) => { updates.push(attributes); return { error: null }; },
     } } }) },
@@ -899,6 +910,8 @@ test("member approval protects administrators and grants only confirmed instruct
   await assert.rejects(setInstructorAccess(form), /result=unconfirmed/);
   assert.equal(updates.length, 0);
   target = { ...target, email_confirmed_at: "2026-11-01" };
+  await assert.rejects(setInstructorAccess(form), /result=unlinked/);
+  target = { ...target, app_metadata: { promotion_candidate_id: "7" }, user_metadata: { requested_role: "instructor", full_name: "김강사" } };
   await assert.rejects(setInstructorAccess(form), /result=approved/);
   assert.equal(updates[0].app_metadata.role, "instructor");
 });
@@ -908,19 +921,26 @@ test("instructor signup records only an untrusted request and never assigns an a
   const oldKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "public-test-key";
-  let payload;
+  let payload, linked;
   try {
     const { registerInstructor } = load("src/app/admin/signup/actions.ts", {
       "@supabase/supabase-js": { createClient: (_url, _key, options) => {
         assert.equal(options.auth.persistSession, false);
-        return { auth: { signUp: async (input) => { payload = input; return { error: null }; } } };
+        return { auth: { signUp: async (input) => { payload = input; return { data: { user: { id: "user-1", identities: [{ id: "identity-1" }] } }, error: null }; } } };
       } },
+      "../../../../lib/supabase/service": { createServiceClient: () => ({
+        schema: () => ({ from: () => ({ select: () => ({ eq: () => ({ not: () => ({ limit: async () => ({ data: [{ id: 7, name: "김강사", phone: "010-1234-5678", email: null, hired_at: "2026-11-01" }], error: null }) }) }) }) }) }),
+        auth: { admin: { getUserById: async () => ({ data: { user: { email: "teacher@example.com", app_metadata: { provider: "email" } } }, error: null }), updateUserById: async (_id, input) => { linked = input; return { error: null }; } } },
+      }) },
+      "@/features/admin/promotion-request": load("src/features/admin/promotion-request.ts", {}),
     });
-    const form = new FormData(); form.set("name", " 김강사 "); form.set("email", "TEACHER@example.com"); form.set("password", "strong-pass-123");
+    const form = new FormData(); form.set("name", " 김강사 "); form.set("phone", "01012345678"); form.set("email", "TEACHER@example.com"); form.set("password", "strong-pass-123");
     assert.equal((await registerInstructor({ error: "", success: false }, form)).success, true);
     assert.equal(payload.email, "teacher@example.com");
     assert.equal(payload.options.data.requested_role, "instructor");
     assert.equal(Object.hasOwn(payload.options.data, "role"), false);
+    assert.equal(linked.app_metadata.promotion_candidate_id, "7");
+    assert.equal(Object.hasOwn(linked.app_metadata, "role"), false);
   } finally {
     if (oldUrl === undefined) delete process.env.NEXT_PUBLIC_SUPABASE_URL; else process.env.NEXT_PUBLIC_SUPABASE_URL = oldUrl;
     if (oldKey === undefined) delete process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY; else process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = oldKey;

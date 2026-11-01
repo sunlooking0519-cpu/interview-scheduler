@@ -19,10 +19,13 @@ export async function setInstructorAccess(formData: FormData) {
       else if (user.user_metadata.requested_role !== "instructor" && user.app_metadata.role !== "instructor") result = "invalid";
       else if (action === "approve" && !user.email_confirmed_at) result = "unconfirmed";
       else {
-        const { error: schemaError } = action === "approve"
-          ? await service.schema("scheduler").from("interviews").select("hired_at").limit(1)
-          : { error: null };
-        if (schemaError) result = "setup";
+        const candidateId = String(user.app_metadata.promotion_candidate_id ?? "");
+        const { data: candidate, error: schemaError } = action === "approve" && candidateId
+          ? await service.schema("scheduler").from("interviews").select("id,name,email,hired_at").eq("id", candidateId).maybeSingle()
+          : { data: null, error: null };
+        if (action === "approve" && !candidateId) result = "unlinked";
+        else if (schemaError) result = "setup";
+        else if (action === "approve" && (!candidate?.hired_at || candidate.name.trim() !== String(user.user_metadata.full_name ?? "").trim() || (candidate.email && candidate.email.trim().toLowerCase() !== user.email?.toLowerCase()))) result = "unlinked";
         else {
           const { error: updateError } = await service.auth.admin.updateUserById(id, {
             app_metadata: { ...user.app_metadata, role: action === "approve" ? "instructor" : "pending" },
