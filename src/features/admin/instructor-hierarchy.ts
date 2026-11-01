@@ -1,6 +1,6 @@
 export type StaffAccount = {
   id: string; email: string; name: string; role: string;
-  requestedRole: string; confirmed: boolean; createdAt: string;
+  requestedRole: string; createdAt: string;
   promotionCandidateId?: string;
 };
 

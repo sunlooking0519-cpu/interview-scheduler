@@ -917,7 +917,7 @@ test("hiring action calls the scoped RPC and refreshes the interview dashboard",
   assert.deepEqual(calls, [["hire_admin_reservation", "7"], "/admin", ["unhire_admin_reservation", "7"], "/admin"]);
 });
 
-test("member approval protects administrators and grants only confirmed instructor applicants", async () => {
+test("member approval protects administrators and grants only hired applicants without an email step", async () => {
   let target = { id: "11111111-1111-4111-8111-111111111111", app_metadata: { role: "admin" }, user_metadata: { requested_role: "instructor" }, email_confirmed_at: "2026-11-01" };
   const updates = [];
   const { setInstructorAccess } = load("src/app/admin/members/actions.ts", {
@@ -932,52 +932,38 @@ test("member approval protects administrators and grants only confirmed instruct
   await assert.rejects(setInstructorAccess(form), /result=protected/);
   assert.equal(updates.length, 0);
   target = { ...target, app_metadata: {}, email_confirmed_at: null };
-  await assert.rejects(setInstructorAccess(form), /result=unconfirmed/);
-  assert.equal(updates.length, 0);
-  target = { ...target, email_confirmed_at: "2026-11-01" };
   await assert.rejects(setInstructorAccess(form), /result=unlinked/);
+  assert.equal(updates.length, 0);
   target = { ...target, app_metadata: { promotion_candidate_id: "7" }, user_metadata: { requested_role: "instructor", full_name: "김강사" } };
   await assert.rejects(setInstructorAccess(form), /result=approved/);
   assert.equal(updates[0].app_metadata.role, "instructor");
+  assert.equal(updates[0].email_confirm, true);
 });
 
-test("instructor signup records only an untrusted request and never assigns an app role", async () => {
-  const oldUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const oldKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "public-test-key";
-  let payload, linked;
-  try {
+test("instructor signup creates a linked account without granting an app role or sending verification", async () => {
+  let payload;
     const { registerInstructor } = load("src/app/admin/signup/actions.ts", {
-      "@supabase/supabase-js": { createClient: (_url, _key, options) => {
-        assert.equal(options.auth.persistSession, false);
-        return { auth: { signUp: async (input) => { payload = input; return { data: { user: { id: "user-1", identities: [{ id: "identity-1" }] } }, error: null }; } } };
-      } },
       "../../../../lib/supabase/service": { createServiceClient: () => ({
         schema: () => ({ from: () => ({ select: () => ({ eq: () => ({ not: () => ({ limit: async () => ({ data: [{ id: 7, name: "김강사", phone: "010-1234-5678", email: null, hired_at: "2026-11-01" }], error: null }) }) }) }) }) }),
-        auth: { admin: { getUserById: async () => ({ data: { user: { email: "teacher@example.com", app_metadata: { provider: "email" } } }, error: null }), updateUserById: async (_id, input) => { linked = input; return { error: null }; } } },
+        auth: { admin: { createUser: async (input) => { payload = input; return { data: { user: { id: "user-1" } }, error: null }; } } },
       }) },
       "@/features/admin/promotion-request": load("src/features/admin/promotion-request.ts", {}),
     });
     const form = new FormData(); form.set("name", " 김강사 "); form.set("phone", "01012345678"); form.set("email", "TEACHER@example.com"); form.set("password", "strong-pass-123");
     assert.equal((await registerInstructor({ error: "", success: false }, form)).success, true);
     assert.equal(payload.email, "teacher@example.com");
-    assert.equal(payload.options.data.requested_role, "instructor");
-    assert.equal(Object.hasOwn(payload.options.data, "role"), false);
-    assert.equal(linked.app_metadata.promotion_candidate_id, "7");
-    assert.equal(Object.hasOwn(linked.app_metadata, "role"), false);
-  } finally {
-    if (oldUrl === undefined) delete process.env.NEXT_PUBLIC_SUPABASE_URL; else process.env.NEXT_PUBLIC_SUPABASE_URL = oldUrl;
-    if (oldKey === undefined) delete process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY; else process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = oldKey;
-  }
+    assert.equal(payload.email_confirm, true);
+    assert.equal(payload.user_metadata.requested_role, "instructor");
+    assert.equal(payload.app_metadata.promotion_candidate_id, "7");
+    assert.equal(Object.hasOwn(payload.app_metadata, "role"), false);
 });
 
 test("instructor hierarchy attributes hires to managers and preserves former recruiters", () => {
   const { buildInstructorHierarchy } = load("src/features/admin/instructor-hierarchy.ts", {});
   const accounts = [
-    { id: "top", email: "top@example.com", name: "최고", role: "admin", requestedRole: "", confirmed: true, createdAt: "" },
-    { id: "middle", email: "middle@example.com", name: "중간", role: "instructor", requestedRole: "instructor", confirmed: true, createdAt: "" },
-    { id: "former", email: "former@example.com", name: "이전", role: "pending", requestedRole: "instructor", confirmed: true, createdAt: "" },
+    { id: "top", email: "top@example.com", name: "최고", role: "admin", requestedRole: "", createdAt: "" },
+    { id: "middle", email: "middle@example.com", name: "중간", role: "instructor", requestedRole: "instructor", createdAt: "" },
+    { id: "former", email: "former@example.com", name: "이전", role: "pending", requestedRole: "instructor", createdAt: "" },
   ];
   const teacher = (id, recruiter) => ({ id, name: id, email: null, phone: "01012345678", interview_date: "2026-11-01", hired_at: "2026-11-01T09:00:00+09:00", hired_by: recruiter });
   const result = buildInstructorHierarchy(accounts, [teacher("A", "middle"), teacher("B", "former"), teacher("C", "top"), teacher("D", null)]);

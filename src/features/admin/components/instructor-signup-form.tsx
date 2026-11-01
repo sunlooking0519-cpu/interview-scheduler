@@ -7,7 +7,7 @@ const initial = { error: "", success: false };
 
 export function InstructorSignupForm() {
   const [state, action, pending] = useActionState(registerInstructor, initial);
-  if (state.success) return <p role="status" className="mt-6 rounded-xl bg-emerald-50 p-4 text-sm leading-6 text-emerald-800">가입 요청을 접수했습니다. 이메일 확인을 마친 뒤 최고관리자의 승인을 기다려 주세요. 승인 후 면접관리와 채용 기능에 로그인할 수 있습니다.</p>;
+  if (state.success) return <p role="status" className="mt-6 rounded-xl bg-emerald-50 p-4 text-sm leading-6 text-emerald-800">권한 요청을 접수했습니다. 최고관리자가 채용 기록과 신청자를 확인해 승인하면 면접관리와 채용 기능에 로그인할 수 있습니다.</p>;
   return <form action={action} className="mt-6 space-y-4">
     <label className="block text-sm font-medium">이름<input name="name" required maxLength={80} autoComplete="name" className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3"/></label>
     <label className="block text-sm font-medium">예약 시 입력한 휴대전화<input name="phone" type="tel" required maxLength={20} autoComplete="tel" className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3"/></label>

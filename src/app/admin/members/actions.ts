@@ -17,7 +17,6 @@ export async function setInstructorAccess(formData: FormData) {
     if (!error && user) {
       if (["admin", "super_admin"].includes(String(user.app_metadata.role ?? ""))) result = "protected";
       else if (user.user_metadata.requested_role !== "instructor" && user.app_metadata.role !== "instructor") result = "invalid";
-      else if (action === "approve" && !user.email_confirmed_at) result = "unconfirmed";
       else {
         const candidateId = String(user.app_metadata.promotion_candidate_id ?? "");
         const { data: candidate, error: schemaError } = action === "approve" && candidateId
@@ -28,6 +27,7 @@ export async function setInstructorAccess(formData: FormData) {
         else if (action === "approve" && (!candidate?.hired_at || candidate.name.trim() !== String(user.user_metadata.full_name ?? "").trim() || (candidate.email && candidate.email.trim().toLowerCase() !== user.email?.toLowerCase()))) result = "unlinked";
         else {
           const { error: updateError } = await service.auth.admin.updateUserById(id, {
+            ...(action === "approve" && !user.email_confirmed_at ? { email_confirm: true } : {}),
             app_metadata: { ...user.app_metadata, role: action === "approve" ? "instructor" : "pending" },
           });
           if (!updateError) result = action === "approve" ? "approved" : "revoked";
