@@ -762,6 +762,17 @@ test("only explicitly opened, unbooked times can be selected", () => {
   assert.equal(timeSlots.openTimes([]).length, 0);
 });
 
+test("opening a previously missing time slot updates the visible state immediately", () => {
+  const missing = timeSlots.setSlotEnabled([], "12:00", true);
+  assert.equal(missing.length, 1);
+  assert.equal(missing[0].interview_time, "12:00");
+  assert.equal(missing[0].enabled, true);
+  assert.equal(missing[0].booked, false);
+  assert.equal(timeSlots.setSlotEnabled(missing, "12:00", false)[0].enabled, false);
+  const booked = [{ interview_time: "12:00", enabled: false, booked: true }];
+  assert.equal(timeSlots.setSlotEnabled(booked, "12:00", true)[0].booked, true);
+});
+
 test("admin time controls authorize before saving and reject unsupported slots", async () => {
   let authorized = 0;
   const saved = [];

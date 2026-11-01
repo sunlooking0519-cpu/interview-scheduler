@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { koreaToday, type BookingDate } from "@/features/booking/dates";
-import { ALL_TIMES, displayTime, type TimeSlot } from "@/features/booking/time-slots";
+import { ALL_TIMES, displayTime, setSlotEnabled, type TimeSlot } from "@/features/booking/time-slots";
 import { getTimeSlots, getBookingDates } from "@/app/(candidate)/booking/availability";
 import { setTimeSlot, closeAllTimeSlots, addBookingDate } from "@/app/admin/time-actions";
 import { AdminCalendar } from "@/features/admin/components/admin-calendar";
@@ -65,7 +65,11 @@ export function TimeSlotManager({ interviews }: { interviews: InterviewReservati
       const enabled = !slots.find((slot) => slot.interview_time === time)?.enabled;
       const result = await setTimeSlot(date, time, enabled);
       if (result.error) { setError(result.error); return; }
-      setSlots((rows) => rows.map((slot) => slot.interview_time === time ? { ...slot, enabled } : slot));
+      setSlots((rows) => setSlotEnabled(rows, time, enabled));
+      if (!dates.some((row) => row.interview_date === date)) {
+        const refreshed = await getBookingDates();
+        if (!refreshed.error) setDates(refreshed.dates);
+      }
       setMessage(`${time} 예약을 ${enabled ? "열었습니다" : "닫았습니다"}.`);
     } catch { setError("시간 설정을 저장하지 못했습니다."); }
     finally { busy.current = false; setSaving(false); }

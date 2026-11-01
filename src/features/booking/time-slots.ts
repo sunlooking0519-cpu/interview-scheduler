@@ -5,6 +5,14 @@ export const ALL_TIMES = Array.from({ length: 25 }, (_, index) => {
 
 export type TimeSlot = { interview_time: string; enabled: boolean; booked: boolean };
 
+export function setSlotEnabled(slots: TimeSlot[], time: string, enabled: boolean): TimeSlot[] {
+  if (slots.some((slot) => slot.interview_time === time)) {
+    return slots.map((slot) => slot.interview_time === time ? { ...slot, enabled } : slot);
+  }
+  return [...slots, { interview_time: time, enabled, booked: false }]
+    .sort((a, b) => a.interview_time.localeCompare(b.interview_time));
+}
+
 export function openTimes(slots: TimeSlot[]): string[] {
   return slots.filter((slot) => slot.enabled === true && slot.booked === false).map((slot) => slot.interview_time);
 }
