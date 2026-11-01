@@ -1,9 +1,8 @@
 import Link from "next/link";
 import { requireAdmin } from "@/server/admin-auth";
+import { loadSalesOrganizationData } from "@/server/sales-organization-data";
 import { retrySalesCalendarSync } from "./actions";
 import { SalesDashboard } from "@/features/admin/components/sales-dashboard";
-import type { DashboardActivity } from "@/features/admin/sales-dashboard-model";
-import { buildSalesOrganizationList, type SalesOrganizationRow, type SalesStatusActivity } from "@/features/admin/sales-organization-list";
 import {
   elapsedDays,
   followUpStatusLabels,
@@ -63,55 +62,12 @@ export default async function SalesPage({ searchParams }: {
   const { q = "", category = "", region = "", contact = "", stage = "", view = "visits", sync = "", saved = "" } = await searchParams;
   const db = supabase.schema("scheduler");
   if (view === "visits") {
-    const allOrganizations: SalesOrganizationRow[] = [];
-    const allActivities: (DashboardActivity & SalesStatusActivity)[] = [];
+    const { rows, activities, contacts, loadError } = await loadSalesOrganizationData(supabase);
     const contactNames: Record<string, string[]> = {};
-    let loadError = false;
-    for (let offset = 0; ; offset += 1000) {
-      const result = await db.from("sales_organizations")
-        .select("id,name,region,updated_at")
-        .order("updated_at", { ascending: false }).order("id").range(offset, offset + 999);
-      if (result.error) { loadError = true; break; }
-      const batch = (result.data ?? []) as SalesOrganizationRow[];
-      allOrganizations.push(...batch);
-      if (batch.length < 1000) break;
-    }
-    let hasProposalStatus = true;
-    let hasManagementDate = true;
-    for (let offset = 0; ; offset += 1000) {
-      const columns = `id,organization_id,contact_id,activity_type,occurred_at,created_at,summary,follow_up_round,reaction${hasProposalStatus ? ",proposal_status,visit_region,contact_method" : ""}${hasManagementDate ? ",management_updated_on" : ""}`;
-      const result = await db.from("sales_activities").select(columns)
-        .order("created_at", { ascending: false }).order("id", { ascending: false }).range(offset, offset + 999);
-      if (result.error && hasManagementDate && ["42703", "PGRST204"].includes(result.error.code)) {
-        hasManagementDate = false;
-        offset = -1000;
-        allActivities.length = 0;
-        continue;
-      }
-      if (result.error && hasProposalStatus && ["42703", "PGRST204"].includes(result.error.code)) {
-        hasProposalStatus = false;
-        offset = -1000;
-        allActivities.length = 0;
-        continue;
-      }
-      if (result.error) { loadError = true; break; }
-      const batch = (result.data ?? []) as unknown as (DashboardActivity & SalesStatusActivity)[];
-      allActivities.push(...batch);
-      if (batch.length < 1000) break;
-    }
-    for (let offset = 0; ; offset += 1000) {
-      const result = await db.from("sales_contacts")
-        .select("organization_id,name")
-        .order("created_at", { ascending: true }).order("id").range(offset, offset + 999);
-      if (result.error) { loadError = true; break; }
-      const batch = (result.data ?? []) as { organization_id: string; name: string }[];
-      for (const item of batch) (contactNames[item.organization_id] ??= []).push(item.name);
-      if (batch.length < 1000) break;
-    }
-    const rows = buildSalesOrganizationList(allOrganizations, allActivities);
+    for (const item of contacts) (contactNames[item.organization_id] ??= []).push(item.name);
     return <SalesDashboard
       organizations={rows}
-      recentActivities={allActivities.slice(0, 15)}
+      recentActivities={activities.slice(0, 15)}
       contactNames={contactNames} query={q} category={category} region={region} contact={contact}
       saved={saved} loadError={loadError} today={koreaDateKey(new Date())}
     />;

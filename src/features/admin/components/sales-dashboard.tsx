@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { DashboardActivity } from "../sales-dashboard-model";
 import { filterSalesOrganizationList, type SalesOrganizationListRow } from "../sales-organization-list";
 import { OrganizationFollowUpDialog } from "./organization-follow-up-dialog";
+import { SalesExportDialog } from "./sales-export-dialog";
 import { SalesOrganizationFilters } from "./sales-organization-filters";
 
 const workflow = [
@@ -43,6 +44,7 @@ export function SalesDashboard({ organizations, recentActivities, contactNames, 
       <div className="p-4 sm:p-6">
         <h2 className="text-xl font-bold">전체 기관 <span className="text-indigo-600">{visible.length}</span><span className="ml-2 text-sm font-normal text-slate-500">/ {organizations.length}개</span></h2>
         <p className="mt-1 text-sm text-slate-500">최근 관리 기록 순 · 기관 유형과 지역을 함께 선택해 볼 수 있습니다.</p>
+        <div className="mt-4 flex justify-end"><SalesExportDialog filters={{ query, category, region, contact }} count={visible.length} disabled={loadError || visible.length === 0} /></div>
         <SalesOrganizationFilters key={JSON.stringify([query, category, region, contact])} query={query} category={category} region={region} contact={contact} />
       </div>
       <div className="hidden grid-cols-[minmax(150px,2fr)_110px_120px_110px_100px_90px] gap-3 border-y bg-slate-50 px-6 py-3 text-xs font-bold text-slate-600 lg:grid"><span>기관명</span><span>방문일</span><span>최근 업데이트</span><span>제안서 제출</span><span>반응</span><span className="text-right">관리</span></div>

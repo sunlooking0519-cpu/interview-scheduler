@@ -14,7 +14,7 @@ function load(path, imports) {
   }).outputText;
   const exports = {};
   vm.runInNewContext(code, {
-    exports, FormData, console, process, Buffer, URL, URLSearchParams, AbortSignal,
+    exports, FormData, Response, console, process, Buffer, URL, URLSearchParams, AbortSignal,
     createImageBitmap: imports.__createImageBitmap,
     require(name) {
       if (name === "@/server/calendar-sync" && !(name in imports)) return { scheduleCalendarSync() {} };
@@ -144,6 +144,65 @@ test("sales organization filters combine institution type, region aliases, and c
   assert.equal(filterSalesOrganizationList(rows, contacts, {
     query: "", category: "", region: "", contact: "이",
   }).map((row) => row.id).join(","), "a,c");
+});
+
+test("sales export uses the visible institutions and selected column order in a valid xlsx", async () => {
+  const followUp = load("src/features/admin/sales-follow-up.ts", {});
+  const salesList = load("src/features/admin/sales-organization-list.ts", { "./sales-follow-up": followUp });
+  const salesExport = load("src/features/admin/sales-export.ts", {
+    "./sales-organization-list": salesList, "./sales-follow-up": followUp,
+  });
+  const organizations = [
+    { id: "a", name: "전주시립도서관", contactRegion: "전주", lastUpdatedAt: "2026-11-01T03:00:00Z", visitDate: "2026-10-16", proposalStatus: "submitted", reaction: null, contactMethod: "visit", notes: "상담" },
+    { id: "b", name: "광주대학교", contactRegion: "광주", lastUpdatedAt: "2026-10-20T03:00:00Z", visitDate: null, proposalStatus: null, reaction: null, contactMethod: "visit", notes: "" },
+  ];
+  const contacts = [
+    { organization_id: "a", name: "이예린", phone: null, mobile: "010-1111-2222", email: "a@example.com" },
+    { organization_id: "a", name: "김지수", phone: "063-111-2222", mobile: null, email: null },
+  ];
+  const columns = ["organization", "contactNames", "mobile", "updatedDate"];
+  const rows = salesExport.buildSalesExportRows(organizations, contacts, {
+    query: "도서관", category: "library", region: "전북", contact: "예린",
+  }, columns);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0][0], "전주시립도서관");
+  assert.equal(rows[0][1], "이예린\n김지수");
+  assert.equal(rows[0][2], "010-1111-2222\n");
+  assert.equal(rows[0][3].toISOString(), "2026-11-01T00:00:00.000Z");
+
+  const ExcelJS = (await import("exceljs")).default;
+  const { createSalesExportWorkbook } = load("src/server/sales-export-workbook.ts", {
+    "server-only": {}, "exceljs": { default: ExcelJS, __esModule: true }, "@/features/admin/sales-export": salesExport,
+  });
+  const buffer = await createSalesExportWorkbook(columns, rows);
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(buffer);
+  const sheet = workbook.getWorksheet("기관 목록");
+  assert.equal(sheet.getCell("A1").value, "기관명");
+  assert.equal(sheet.getCell("B1").value, "담당자 이름");
+  assert.equal(sheet.getCell("B2").value, "이예린\n김지수");
+  assert.equal(sheet.getCell("D2").numFmt, "yyyy-mm-dd");
+  assert.equal(sheet.rowCount, 2);
+});
+
+test("sales export endpoint checks admin access and rejects unlisted columns before reading contacts", async () => {
+  let reads = 0;
+  let auth = 0;
+  const route = load("src/app/admin/sales/export/route.ts", {
+    "@/server/admin-auth": { requireAdmin: async () => { auth++; return { supabase: {} }; } },
+    "@/server/sales-organization-data": { loadSalesOrganizationData: async () => { reads++; return { rows: [], contacts: [], loadError: false }; } },
+    "@/server/sales-export-workbook": { createSalesExportWorkbook: async () => Buffer.from("xlsx") },
+    "@/features/admin/sales-export": { salesExportColumns: [["organization", "기관명"]], buildSalesExportRows: () => [] },
+    "@/features/admin/sales-organization-list": { organizationCategoryOptions: [], salesRegionOptions: [] },
+    "@/features/admin/sales-follow-up": { koreaDateKey: () => "2026-11-01" },
+  });
+  const request = new Request("https://example.com/admin/sales/export", {
+    method: "POST", body: JSON.stringify({ columns: ["email"], filters: { query: "", category: "", region: "", contact: "" } }),
+  });
+  const response = await route.POST(request);
+  assert.equal(response.status, 400);
+  assert.equal(auth, 1);
+  assert.equal(reads, 0);
 });
 
 test("dashboard counts only reservations whose interview time has not passed in Korea", () => {
