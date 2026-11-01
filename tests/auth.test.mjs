@@ -3,12 +3,14 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import ts from "typescript";
+import { renderToStaticMarkup } from "react-dom/server";
+import * as jsxRuntime from "react/jsx-runtime";
 import * as crypto from "node:crypto";
 import { NextRequest, NextResponse } from "next/server.js";
 
 function load(path, imports) {
   const code = ts.transpileModule(readFileSync(new URL(`../${path}`, import.meta.url), "utf8"), {
-    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, jsx: ts.JsxEmit.ReactJSX },
   }).outputText;
   const exports = {};
   vm.runInNewContext(code, {
@@ -30,6 +32,18 @@ const timeSlots = load("src/features/booking/time-slots.ts", {});
 const bookingDates = load("src/features/booking/dates.ts", {});
 const admin = { id: "admin-id", email: "admin@example.com", app_metadata: { role: "admin" } };
 const redirect = (path) => { throw new Error(`REDIRECT:${path}`); };
+
+test("candidate time picker renders only open slots", () => {
+  const { TimeButtons } = load("src/features/booking/components/time-buttons.tsx", {
+    "react/jsx-runtime": jsxRuntime,
+    "@/features/booking/time-slots": timeSlots,
+  });
+  const markup = renderToStaticMarkup(TimeButtons({ selected: "", available: ["12:00"], onSelect() {} }));
+  assert.match(markup, /12:00/);
+  assert.doesNotMatch(markup, /9:00|오전|예약 불가/);
+  const empty = renderToStaticMarkup(TimeButtons({ selected: "", available: [], onSelect() {} }));
+  assert.doesNotMatch(empty, /<button/);
+});
 
 test("promotion requests match one hired reservation and reject mismatched identity", () => {
   const { matchingHiredCandidate } = load("src/features/admin/promotion-request.ts", {});

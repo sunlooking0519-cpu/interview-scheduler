@@ -20,6 +20,7 @@ export function AvailableTimeButtons({ date, selected, disabled, onSelect, origi
   return <>
     {date && !loaded && <p role="status" className="mt-3 text-sm text-slate-500">예약 가능 시간 확인 중...</p>}
     {loaded && result.error && <p role="alert" className="mt-3 text-sm text-red-600">{result.error}</p>}
+    {loaded && !result.error && available.length === 0 && <p role="status" className="mt-3 text-sm text-slate-500">선택한 날짜에 예약 가능한 시간이 없습니다.</p>}
     <TimeButtons selected={selected} available={available} disabled={disabled || !loaded} onSelect={onSelect} />
   </>;
 }
