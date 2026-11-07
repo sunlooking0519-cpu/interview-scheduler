@@ -55,7 +55,7 @@ export async function createInterview(
       resumeUrl = await verifyUploadedResume(resumePath);
     } catch {
       if (resumePath) await removeUploadedResume(resumePath);
-      return { success: false, message: "이력서 파일을 확인할 수 없습니다. PDF 또는 Word 파일을 다시 선택해 주세요." };
+      return { success: false, message: "이력서 파일을 확인할 수 없습니다. PDF, Word 또는 이미지(JPG, PNG, WebP)를 다시 선택해 주세요." };
     }
   }
   try {

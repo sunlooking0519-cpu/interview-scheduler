@@ -976,9 +976,14 @@ test("resume validation enforces allowed extensions and the 5MB boundary", () =>
   assert.equal(resume.resumeError("resume.PDF", 5 * 1024 * 1024), "");
   assert.equal(resume.resumeError("resume.doc", 100), "");
   assert.equal(resume.resumeError("resume.docx", 100), "");
+  assert.equal(resume.resumeError("resume.JPG", 100), "");
+  assert.equal(resume.resumeError("resume.jpeg", 100), "");
+  assert.equal(resume.resumeError("resume.png", 100), "");
+  assert.equal(resume.resumeError("resume.webp", 100), "");
   assert.ok(resume.resumeError("resume.pdf", 5 * 1024 * 1024 + 1));
   assert.ok(resume.resumeError("resume.pdf", 0));
   assert.ok(resume.resumeError("resume.pdf.exe", 100));
+  assert.ok(resume.resumeError("resume.heic", 100));
 });
 
 test("resume tickets bind files to the candidate and reject tampering", () => {
@@ -989,13 +994,15 @@ test("resume tickets bind files to the candidate and reject tampering", () => {
     const path = resume.newResumePath("pdf");
     const ticket = resume.resumeTicket(path, " 지원자 ", "01012345678");
     assert.equal(resume.readResumeTicket(ticket, "지원자", "01012345678"), path);
+    const imagePath = resume.newResumePath("jpg");
+    assert.equal(resume.readResumeTicket(resume.resumeTicket(imagePath, "지원자", "01012345678"), "지원자", "01012345678"), imagePath);
     assert.throws(() => resume.readResumeTicket(ticket, "다른사람", "01012345678"));
     assert.throws(() => resume.readResumeTicket(ticket, "지원자", "01000000000"));
     assert.throws(() => resume.readResumeTicket(`x${ticket}`, "지원자", "01012345678"));
   } finally { if (previous === undefined) delete process.env.SUPABASE_SECRET_KEY; else process.env.SUPABASE_SECRET_KEY = previous; }
 });
 
-test("uploaded resumes require document signatures before a public URL is returned", async () => {
+test("uploaded resumes require matching document or image signatures before a public URL is returned", async () => {
   let file = new Blob(["%PDF-1.7\nresume"]);
   const resume = load("src/server/resumes.ts", {
     "server-only": {}, "node:crypto": crypto, "@/features/booking/resume": load("src/features/booking/resume.ts", {}),
@@ -1008,6 +1015,15 @@ test("uploaded resumes require document signatures before a public URL is return
   assert.ok(await resume.verifyUploadedResume("uploads/test.doc"));
   file = new Blob([Buffer.from([0x50, 0x4b, 3, 4]), "word/document.xml"]);
   assert.ok(await resume.verifyUploadedResume("uploads/test.docx"));
+  file = new Blob([Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00])]);
+  assert.ok(await resume.verifyUploadedResume("uploads/test.jpg"));
+  assert.ok(await resume.verifyUploadedResume("uploads/test.jpeg"));
+  file = new Blob([Buffer.from("89504e470d0a1a0a", "hex")]);
+  assert.ok(await resume.verifyUploadedResume("uploads/test.png"));
+  file = new Blob([Buffer.from("RIFFxxxxWEBPVP8 ")]);
+  assert.ok(await resume.verifyUploadedResume("uploads/test.webp"));
+  file = new Blob(["not an image"]);
+  await assert.rejects(() => resume.verifyUploadedResume("uploads/test.jpg"));
 });
 
 test("booking persists verified resume URLs and cleans files on a slot conflict", async () => {

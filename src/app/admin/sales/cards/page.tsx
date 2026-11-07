@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { requireSalesStaff } from "@/server/admin-auth";
+import { apkDownloadUrl } from "@/features/admin/business-card-app";
 import { BusinessCardRegistrationLauncher } from "@/features/admin/components/business-card-registration-launcher";
 import { CardVisitDialog } from "@/features/admin/components/card-visit-dialog";
 import { koreaDateKey } from "@/features/admin/sales-follow-up";
@@ -91,7 +92,10 @@ export default async function BusinessCardsPage({ searchParams }: {
     <header className="rounded-3xl bg-gradient-to-br from-slate-950 via-indigo-950 to-indigo-700 p-6 text-white shadow-lg sm:p-8">
       <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
         <div><p className="text-xs font-bold tracking-[0.22em] text-indigo-200">BUSINESS CARDS</p><h1 className="mt-3 text-3xl font-bold">명함 관리</h1><p className="mt-2 max-w-2xl text-sm leading-6 text-indigo-100">명함을 선택해 방문일과 상담 내용을 바로 기록하세요.</p></div>
-        <BusinessCardRegistrationLauncher />
+        <div className="flex flex-wrap gap-3 sm:justify-end">
+          <a href={apkDownloadUrl} className="rounded-xl border border-white/60 px-5 py-3 text-center text-sm font-bold text-white hover:bg-white/10">Android 앱 설치 (APK)</a>
+          <BusinessCardRegistrationLauncher />
+        </div>
       </div>
     </header>
 

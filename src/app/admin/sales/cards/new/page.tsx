@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { BusinessCardRegistrationLauncher } from "@/features/admin/components/business-card-registration-launcher";
+import { apkDownloadUrl } from "@/features/admin/business-card-app";
 import { requireSalesStaff } from "@/server/admin-auth";
 
 export const dynamic = "force-dynamic";
@@ -14,7 +15,10 @@ export default async function NewBusinessCardPage() {
     </header>
     <section className="rounded-2xl border border-slate-200 bg-white p-6">
       <p className="mb-4 text-sm text-slate-600">휴대폰에서는 아래 버튼으로 앱을 여세요. PC에서는 앱을 설치한 안드로이드 휴대폰에서 등록해 주세요.</p>
-      <BusinessCardRegistrationLauncher compact label="앱에서 새 명함 등록" />
+      <div className="flex flex-wrap items-center gap-3">
+        <BusinessCardRegistrationLauncher compact label="앱에서 새 명함 등록" />
+        <a href={apkDownloadUrl} className="inline-flex rounded-xl border border-indigo-200 px-4 py-2 text-sm font-bold text-indigo-700">Android 앱 설치 (APK)</a>
+      </div>
     </section>
   </div>;
 }

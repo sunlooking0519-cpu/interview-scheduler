@@ -4,7 +4,7 @@ alter table scheduler.interviews add column if not exists resume_url text;
 -- admin-auth-migration.sql uses column-level INSERT grants; new columns need an explicit grant.
 grant insert (resume_url) on scheduler.interviews to anon, authenticated;
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-values ('resumes', 'resumes', true, 5242880, array['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'])
+values ('resumes', 'resumes', true, 5242880, array['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'image/jpeg', 'image/png', 'image/webp'])
 on conflict (id) do update set public = true, file_size_limit = excluded.file_size_limit, allowed_mime_types = excluded.allowed_mime_types;
 -- 파일 업로드·삭제는 서버가 발급한 signed upload URL 및 service role로만 처리합니다.
 -- anon/authenticated용 INSERT/UPDATE/DELETE 정책을 추가하지 않습니다.

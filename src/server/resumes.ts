@@ -18,7 +18,7 @@ export function readResumeTicket(ticket: string, name: string, phone: string): s
   const expected = sign(payload);
   if (Buffer.byteLength(signature) !== Buffer.byteLength(expected) || !timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) throw new Error("Invalid resume ticket");
   const data = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
-  if (data.name !== name.trim() || data.phone !== phone.trim() || data.expires < Date.now() || !/^uploads\/[0-9a-f-]{36}\.(pdf|doc|docx)$/.test(data.path)) throw new Error("Expired or invalid resume ticket");
+  if (data.name !== name.trim() || data.phone !== phone.trim() || data.expires < Date.now() || !/^uploads\/[0-9a-f-]{36}\.(pdf|doc|docx|jpg|jpeg|png|webp)$/.test(data.path)) throw new Error("Expired or invalid resume ticket");
   return data.path;
 }
 export function newResumePath(extension: string) { return `uploads/${randomUUID()}.${extension}`; }
@@ -31,7 +31,11 @@ export async function verifyUploadedResume(path: string) {
   const extension = path.split(".").pop()!;
   const valid = extension === "pdf" ? Buffer.from(bytes.slice(0, 5)).toString() === "%PDF-"
     : extension === "doc" ? Buffer.from(bytes.slice(0, 8)).toString("hex") === "d0cf11e0a1b11ae1"
-    : bytes[0] === 0x50 && bytes[1] === 0x4b && bytes[2] === 3 && bytes[3] === 4 && Buffer.from(bytes).includes(Buffer.from("word/"));
+    : extension === "docx" ? bytes[0] === 0x50 && bytes[1] === 0x4b && bytes[2] === 3 && bytes[3] === 4 && Buffer.from(bytes).includes(Buffer.from("word/"))
+    : extension === "jpg" || extension === "jpeg" ? bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff
+    : extension === "png" ? Buffer.from(bytes.slice(0, 8)).toString("hex") === "89504e470d0a1a0a"
+    : extension === "webp" ? Buffer.from(bytes.slice(0, 4)).toString() === "RIFF" && Buffer.from(bytes.slice(8, 12)).toString() === "WEBP"
+    : false;
   if (!valid || !RESUME_TYPES[extension]) throw new Error("Invalid resume format");
   return storage.getPublicUrl(path).data.publicUrl;
 }

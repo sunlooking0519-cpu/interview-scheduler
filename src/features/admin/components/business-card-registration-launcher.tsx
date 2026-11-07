@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { apkDownloadUrl } from "@/features/admin/business-card-app";
 
 const appUrl = "wisecardocr://new-card";
-const releaseUrl = "https://github.com/sunlooking0519-cpu/interview-scheduler/releases/latest";
 
 export function BusinessCardRegistrationLauncher({ compact = false, label }: { compact?: boolean; label?: string }) {
   const [showGuide, setShowGuide] = useState(false);
@@ -29,7 +29,7 @@ export function BusinessCardRegistrationLauncher({ compact = false, label }: { c
         <p className="mt-2 text-sm text-slate-600">휴대폰에서 앱이 열리지 않으면 최신 앱을 설치하거나 업데이트해 주세요.</p>
         <div className="mt-5 flex flex-wrap gap-2">
           {androidDevice && <a href={appUrl} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-bold text-white">앱 열기</a>}
-          <a href={releaseUrl} target="_blank" rel="noopener noreferrer" className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700">앱 다운로드</a>
+          <a href={apkDownloadUrl} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700">Android 앱 설치 (APK)</a>
           <button type="button" onClick={() => setShowGuide(false)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700">닫기</button>
         </div>
       </div>
