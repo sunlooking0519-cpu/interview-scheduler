@@ -64,8 +64,8 @@ export default async function SalesPage({ searchParams }: {
   const db = supabase.schema("scheduler");
   if (view === "visits") {
     const { rows, activities, contacts, loadError } = await loadSalesOrganizationData(supabase);
-    const contactsByOrganization: Record<string, { id: string; name: string; email: string | null }[]> = {};
-    for (const item of contacts) (contactsByOrganization[item.organization_id] ??= []).push({ id: item.id, name: item.name, email: item.email });
+    const contactsByOrganization: Record<string, { id: string; name: string; email: string | null; phone: string | null; mobile: string | null }[]> = {};
+    for (const item of contacts) (contactsByOrganization[item.organization_id] ??= []).push({ id: item.id, name: item.name, email: item.email, phone: item.phone, mobile: item.mobile });
     return <SalesDashboard
       organizations={rows}
       recentActivities={activities.slice(0, 15)}
