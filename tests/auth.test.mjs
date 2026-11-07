@@ -287,6 +287,44 @@ test("sales export endpoint checks admin access and rejects unlisted columns bef
   assert.equal(reads, 0);
 });
 
+test("manager sales export includes only the chosen manager's organizations and contacts", async () => {
+  const followUp = load("src/features/admin/sales-follow-up.ts", {});
+  const salesList = load("src/features/admin/sales-organization-list.ts", { "./sales-follow-up": followUp });
+  const salesExport = load("src/features/admin/sales-export.ts", {
+    "./sales-organization-list": salesList, "./sales-follow-up": followUp,
+  });
+  const managerId = "22222222-2222-4222-8222-222222222222";
+  const organizations = [
+    { id: "mine", workspace_id: "mine-workspace", name: "내 기관", contactRegion: "광주", lastUpdatedAt: "2026-11-07T00:00:00Z", visitDate: null, proposalStatus: null, reaction: null, contactMethod: "visit", notes: "" },
+    { id: "other", workspace_id: "other-workspace", name: "다른 강사 기관", contactRegion: "서울", lastUpdatedAt: "2026-11-07T00:00:00Z", visitDate: null, proposalStatus: null, reaction: null, contactMethod: "visit", notes: "" },
+  ];
+  const contacts = [
+    { organization_id: "mine", name: "내 담당자", phone: null, mobile: null, email: "mine@example.com" },
+    { organization_id: "other", name: "다른 담당자", phone: null, mobile: null, email: "other@example.com" },
+  ];
+  let exportedRows;
+  let authChecks = 0;
+  const route = load("src/app/admin/members/sales-export/route.ts", {
+    "@/server/admin-auth": { requireAdmin: async () => { authChecks++; return { supabase: { schema: () => ({ from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { id: "mine-workspace" }, error: null }) }) }) }) }) } }; } },
+    "../../../../../lib/supabase/service": { createServiceClient: () => ({ auth: { admin: { getUserById: async () => ({ data: { user: { app_metadata: { role: "instructor" } } }, error: null }) } } }) },
+    "@/server/sales-organization-data": { loadSalesOrganizationData: async () => ({ rows: organizations, contacts, loadError: false }) },
+    "@/server/sales-export-workbook": { createSalesExportWorkbook: async (_columns, rows) => { exportedRows = rows; return Buffer.from("xlsx"); } },
+    "@/features/admin/sales-export": salesExport,
+    "@/features/admin/sales-follow-up": followUp,
+  });
+  const response = await route.POST(new Request("https://example.com/admin/members/sales-export", {
+    method: "POST", body: JSON.stringify({ managerId, columns: ["organization", "contactNames", "email"] }),
+  }));
+  assert.equal(response.status, 200);
+  assert.equal(authChecks, 1);
+  assert.deepEqual(JSON.parse(JSON.stringify(exportedRows)), [["내 기관", "내 담당자", "mine@example.com"]]);
+  assert.match(response.headers.get("Content-Disposition"), /sales-manager-22222222-/);
+  const invalid = await route.POST(new Request("https://example.com/admin/members/sales-export", {
+    method: "POST", body: JSON.stringify({ managerId, columns: ["organization", "organization"] }),
+  }));
+  assert.equal(invalid.status, 400);
+});
+
 test("dashboard counts only reservations whose interview time has not passed in Korea", () => {
   const { getUpcomingReservationStats } = load("src/features/admin/reservation-stats.ts", {});
   const now = new Date("2026-10-18T10:00:00+09:00");

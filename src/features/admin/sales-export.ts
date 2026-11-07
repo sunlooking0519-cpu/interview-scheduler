@@ -23,6 +23,14 @@ export type SalesExportContact = {
 };
 export type SalesExportFilters = { query: string; category: string; region: string; contact: string };
 
+export function scopeSalesExportToWorkspace(
+  organizations: SalesOrganizationListRow[], contacts: SalesExportContact[], workspaceId: string,
+) {
+  const rows = organizations.filter((organization) => organization.workspace_id === workspaceId);
+  const ids = new Set(rows.map((row) => row.id));
+  return { rows, contacts: contacts.filter((contact) => ids.has(contact.organization_id)) };
+}
+
 const proposalLabels: Record<string, string> = {
   not_submitted: "미제출", planned: "제출 예정", submitted: "제출 완료",
 };

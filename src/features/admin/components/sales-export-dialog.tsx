@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { salesExportColumns, type SalesExportColumn, type SalesExportFilters } from "../sales-export";
 
 const defaultColumns: SalesExportColumn[] = [
@@ -8,10 +8,12 @@ const defaultColumns: SalesExportColumn[] = [
   "proposalStatus", "reaction", "contactNames", "phone", "mobile", "email",
 ];
 
-export function SalesExportDialog({ filters, count, disabled }: {
-  filters: SalesExportFilters; count: number; disabled: boolean;
+export function SalesExportDialog({ filters, count, disabled, manager }: {
+  filters?: SalesExportFilters; count: number; disabled: boolean;
+  manager?: { id: string; name: string };
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
   const [selected, setSelected] = useState<SalesExportColumn[]>(defaultColumns);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
@@ -23,10 +25,10 @@ export function SalesExportDialog({ filters, count, disabled }: {
     setPending(true);
     setError("");
     try {
-      const response = await fetch("/admin/sales/export", {
+      const response = await fetch(manager ? "/admin/members/sales-export" : "/admin/sales/export", {
         method: "POST", credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ columns: selected, filters }),
+        body: JSON.stringify(manager ? { columns: selected, managerId: manager.id } : { columns: selected, filters }),
       });
       const type = response.headers.get("Content-Type") ?? "";
       if (!response.ok || !type.includes("spreadsheetml.sheet")) {
@@ -51,9 +53,9 @@ export function SalesExportDialog({ filters, count, disabled }: {
   };
   return <>
     <button type="button" disabled={disabled} onClick={() => { setError(""); dialog.current?.showModal(); }} className="rounded-xl border border-indigo-300 bg-indigo-50 px-4 py-2.5 text-sm font-semibold text-indigo-800 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-50">엑셀 다운로드</button>
-    <dialog ref={dialog} aria-labelledby="sales-export-title" className="m-auto max-h-[min(90dvh,750px)] w-[min(92vw,620px)] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-0 shadow-2xl backdrop:bg-slate-950/60">
+    <dialog ref={dialog} aria-labelledby={titleId} className="m-auto max-h-[min(90dvh,750px)] w-[min(92vw,620px)] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-0 shadow-2xl backdrop:bg-slate-950/60">
       <div className="flex items-start justify-between gap-3 border-b border-slate-200 p-5 sm:p-6">
-        <div><h3 id="sales-export-title" className="text-xl font-bold text-slate-950">엑셀 다운로드</h3><p className="mt-1 text-sm text-slate-600">현재 목록의 {count}개 기관을 내보냅니다. 필요한 컬럼을 선택하세요.</p></div>
+        <div><h3 id={titleId} className="text-xl font-bold text-slate-950">{manager ? `${manager.name} 영업 엑셀 다운로드` : "엑셀 다운로드"}</h3><p className="mt-1 text-sm text-slate-600">{manager ? `이 강사의 전체 기관 ${count}곳` : `현재 목록의 ${count}개 기관`}을 내보냅니다. 필요한 컬럼을 선택하세요.</p></div>
         <button type="button" onClick={() => dialog.current?.close()} aria-label="닫기" className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-600">닫기</button>
       </div>
       <div className="p-5 sm:p-6">
