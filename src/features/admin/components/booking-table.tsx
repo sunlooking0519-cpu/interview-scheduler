@@ -56,7 +56,7 @@ export function BookingTable({ interviews, hiringEnabled = true, initialStatus =
         </div>
         <p aria-live="polite" className="sr-only">예약 {STATUS_LABELS[status]} {visible.length}명</p>
       </div>
-      <div className="md:hidden">
+      <div className="xl:hidden">
         {visible.length === 0 && <p className="p-5 text-sm text-slate-500">{emptyMessage}</p>}
         <div className="grid grid-cols-2 gap-2 p-3">{visible.map((interview) => <article key={`${status}-${interview.id}`} className="min-w-0 rounded-xl border border-slate-200 p-3">
           <h3 className="break-words text-sm font-bold text-slate-900">{interview.name}</h3>
@@ -68,13 +68,13 @@ export function BookingTable({ interviews, hiringEnabled = true, initialStatus =
           {status === "hired" && <HiringButton id={interview.id} hired/>}
         </article>)}</div>
       </div>
-      <div className="hidden overflow-x-auto md:block"><table className="w-full whitespace-nowrap text-left text-sm">
+      <div className="hidden xl:block"><table className="w-full table-fixed text-left text-sm">
         <caption className="p-6 text-left text-lg font-bold">
           예약 {STATUS_LABELS[status]} 목록
         </caption>
         <thead className="border-y border-slate-100 bg-slate-50 text-slate-500">
           <tr>
-            {["지원자", "연락처", "면접 일정 (KST)", "상태", "이력서", "등록일 · 관리"].map((label) => <th scope="col" key={label} className="px-6 py-4 font-medium">{label}</th>)}
+            {["지원자", "연락처", "면접 일정 (KST)", "상태", "이력서", "등록일 · 관리"].map((label) => <th scope="col" key={label} className="break-words px-3 py-4 font-medium">{label}</th>)}
           </tr>
         </thead>
         <tbody>
@@ -82,12 +82,12 @@ export function BookingTable({ interviews, hiringEnabled = true, initialStatus =
             <tr><td colSpan={6} className="px-6 py-12 text-center text-slate-500">{emptyMessage}</td></tr>
           ) : visible.map((interview) => (
             <tr key={`${status}-${interview.id}`} className="border-b border-slate-100 last:border-0">
-              <td className="px-6 py-5 font-medium text-slate-900">{interview.name}</td>
-              <td className="px-6 py-5">{interview.email && <a href={`mailto:${interview.email}`} className="block text-indigo-600 hover:underline">{interview.email}</a>}<a href={`tel:${interview.phone}`} className="block text-slate-500 hover:text-slate-700">{interview.phone}</a></td>
-              <td className="px-6 py-5">{formatDate(interview.interview_date)} · {interview.interview_time}</td>
-              <td className="px-6 py-5"><span className={`rounded-full px-3 py-1 text-xs ${status === "confirmed" ? "bg-emerald-50 text-emerald-700" : status === "hired" ? "bg-indigo-50 text-indigo-700" : "bg-slate-100 text-slate-600"}`}>{STATUS_LABELS[status]}</span></td>
-              <td className="px-6 py-5"><ResumeLink url={interview.resume_url} /></td>
-              <td className="px-6 py-5 text-slate-500">{formatCreatedAt(interview.created_at)}{status === "confirmed" && <div className="flex flex-wrap items-start gap-2">{hiringEnabled && <HiringButton id={interview.id} hired={false}/>}<CancelReservationButton id={interview.id}/></div>}{status === "hired" && <><p className="mt-1 text-xs">채용 {formatCreatedAt(interview.hired_at!)}</p><HiringButton id={interview.id} hired/></>}</td>
+              <td className="break-words px-3 py-5 font-medium text-slate-900">{interview.name}</td>
+              <td className="break-all px-3 py-5">{interview.email && <a href={`mailto:${interview.email}`} className="block text-indigo-600 hover:underline">{interview.email}</a>}<a href={`tel:${interview.phone}`} className="block text-slate-500 hover:text-slate-700">{interview.phone}</a></td>
+              <td className="px-3 py-5">{formatDate(interview.interview_date)} · {interview.interview_time}</td>
+              <td className="px-3 py-5"><span className={`rounded-full px-3 py-1 text-xs ${status === "confirmed" ? "bg-emerald-50 text-emerald-700" : status === "hired" ? "bg-indigo-50 text-indigo-700" : "bg-slate-100 text-slate-600"}`}>{STATUS_LABELS[status]}</span></td>
+              <td className="px-3 py-5"><ResumeLink url={interview.resume_url} /></td>
+              <td className="px-3 py-5 text-slate-500">{formatCreatedAt(interview.created_at)}{status === "confirmed" && <div className="flex flex-wrap items-start gap-2">{hiringEnabled && <HiringButton id={interview.id} hired={false}/>}<CancelReservationButton id={interview.id}/></div>}{status === "hired" && <><p className="mt-1 text-xs">채용 {formatCreatedAt(interview.hired_at!)}</p><HiringButton id={interview.id} hired/></>}</td>
             </tr>
           ))}
         </tbody>

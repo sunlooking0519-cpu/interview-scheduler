@@ -14,7 +14,7 @@ const dateFormatter = new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Seoul",
 export function SalesDashboard({ organizations, recentActivities, contactsByOrganization, query, category, region, contact, requestedPage, saved, loadError, today }: {
   organizations: SalesOrganizationListRow[];
   recentActivities: DashboardActivity[];
-  contactsByOrganization: Record<string, { name: string; email: string | null }[]>;
+  contactsByOrganization: Record<string, { id: string; name: string; email: string | null }[]>;
   query: string; category: string; region: string; contact: string; requestedPage: string;
   saved: string; loadError: boolean; today: string;
 }) {
@@ -45,20 +45,21 @@ export function SalesDashboard({ organizations, recentActivities, contactsByOrga
         <div className="mt-4 flex justify-end"><SalesExportDialog filters={{ query, category, region, contact }} count={visible.length} disabled={loadError || visible.length === 0} /></div>
         <SalesOrganizationFilters key={JSON.stringify([query, category, region, contact])} query={query} category={category} region={region} contact={contact} />
       </div>
-      <div className="overflow-x-auto">
-      <div className="lg:min-w-[1320px]">
-      <div className="hidden grid-cols-[minmax(170px,1.7fr)_100px_110px_100px_90px_minmax(100px,1fr)_minmax(170px,1.4fr)_90px] gap-3 border-y bg-slate-50 px-6 py-3 text-xs font-bold text-slate-600 lg:grid"><span>기관명</span><span>방문일</span><span>최근 업데이트</span><span>제안서 제출</span><span>반응</span><span>담당자</span><span>이메일</span><span className="text-right">관리</span></div>
-      <div className="divide-y divide-slate-100">{pageRows.map((item) => <article key={item.id} className="grid gap-3 px-4 py-4 hover:bg-slate-50 sm:px-6 lg:grid-cols-[minmax(170px,1.7fr)_100px_110px_100px_90px_minmax(100px,1fr)_minmax(170px,1.4fr)_90px] lg:items-center lg:gap-3">
+      <div className="hidden grid-cols-[minmax(0,1.7fr)_95px_105px_95px_85px_minmax(0,1fr)_minmax(0,1.5fr)_86px] gap-3 border-y bg-slate-50 px-6 py-3 text-xs font-bold text-slate-600 xl:grid"><span>기관명</span><span>방문일</span><span>최근 업데이트</span><span>제안서 제출</span><span>반응</span><span>담당자</span><span>이메일</span><span className="text-right">관리</span></div>
+      <div className="divide-y divide-slate-100">{pageRows.map((item) => {
+        const contacts = contactsByOrganization[item.id] ?? [];
+        const preferred = contacts.find((person) => person.id === item.next_contact_id);
+        const displayedContacts = preferred ? [preferred] : contacts;
+        return <article key={item.id} className="grid min-w-0 gap-3 px-4 py-4 hover:bg-slate-50 sm:px-6 xl:grid-cols-[minmax(0,1.7fr)_95px_105px_95px_85px_minmax(0,1fr)_minmax(0,1.5fr)_86px] xl:items-center xl:gap-3">
         <Link href={`/admin/sales/${item.id}`} className="break-words font-bold text-slate-950 hover:text-indigo-700">{item.name}</Link>
-        <div><span className="text-xs text-slate-500 lg:hidden">방문일 · </span>{item.visitDate ? <time dateTime={item.visitDate} className="text-sm text-slate-700">{item.visitDate}</time> : <span className="text-sm text-slate-400">미기록</span>}</div>
-        <div><span className="text-xs text-slate-500 lg:hidden">최근 업데이트 · </span><time dateTime={item.lastUpdatedAt} className="text-sm text-slate-700">{dateFormatter.format(new Date(item.lastUpdatedAt))}</time></div>
-        <div><span className="text-xs text-slate-500 lg:hidden">제안서 제출 · </span><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${item.proposalStatus === "submitted" ? "bg-emerald-50 text-emerald-700" : item.proposalStatus === "planned" ? "bg-amber-50 text-amber-700" : "bg-slate-100 text-slate-600"}`}>{item.proposalStatus ? proposalLabels[item.proposalStatus] ?? item.proposalStatus : "미기록"}</span></div>
-        <div><span className="text-xs text-slate-500 lg:hidden">반응 · </span><span className="text-sm text-slate-700">{item.reaction ? reactionLabels[item.reaction] ?? item.reaction : "미기록"}</span></div>
-        <div className="min-w-0"><span className="text-xs text-slate-500 lg:hidden">담당자 · </span>{contactsByOrganization[item.id]?.length ? <span className="text-sm text-slate-700">{contactsByOrganization[item.id].map((person) => person.name).join(", ")}</span> : <span className="text-sm text-slate-400">미등록</span>}</div>
-        <div className="min-w-0"><span className="text-xs text-slate-500 lg:hidden">이메일 · </span>{contactsByOrganization[item.id]?.some((person) => person.email) ? <div className="inline-flex flex-col gap-1 align-top">{contactsByOrganization[item.id].filter((person) => person.email).map((person, index) => <a key={`${person.email}-${index}`} href={`mailto:${person.email}`} className="break-all text-sm text-indigo-700 hover:underline">{person.email}</a>)}</div> : <span className="text-sm text-slate-400">미등록</span>}</div>
-        <div className="lg:text-right"><OrganizationFollowUpDialog organization={item} today={today} /></div>
-      </article>)}</div>
-      </div></div>
+        <div><span className="text-xs text-slate-500 xl:hidden">방문일 · </span>{item.visitDate ? <time dateTime={item.visitDate} className="text-sm text-slate-700">{item.visitDate}</time> : <span className="text-sm text-slate-400">미기록</span>}</div>
+        <div><span className="text-xs text-slate-500 xl:hidden">최근 업데이트 · </span><time dateTime={item.lastUpdatedAt} className="text-sm text-slate-700">{dateFormatter.format(new Date(item.lastUpdatedAt))}</time></div>
+        <div><span className="text-xs text-slate-500 xl:hidden">제안서 제출 · </span><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${item.proposalStatus === "submitted" ? "bg-emerald-50 text-emerald-700" : item.proposalStatus === "planned" ? "bg-amber-50 text-amber-700" : "bg-slate-100 text-slate-600"}`}>{item.proposalStatus ? proposalLabels[item.proposalStatus] ?? item.proposalStatus : "미기록"}</span></div>
+        <div><span className="text-xs text-slate-500 xl:hidden">반응 · </span><span className="text-sm text-slate-700">{item.reaction ? reactionLabels[item.reaction] ?? item.reaction : "미기록"}</span></div>
+        <div className="min-w-0 break-words"><span className="text-xs text-slate-500 xl:hidden">담당자 · </span>{displayedContacts.length ? <span className="text-sm text-slate-700">{displayedContacts.map((person) => person.name).join(", ")}</span> : <span className="text-sm text-slate-400">미등록</span>}</div>
+        <div className="min-w-0"><span className="text-xs text-slate-500 xl:hidden">이메일 · </span>{displayedContacts.some((person) => person.email) ? <div className="inline-flex min-w-0 flex-col gap-1 align-top">{displayedContacts.filter((person) => person.email).map((person, index) => <a key={`${person.email}-${index}`} href={`mailto:${person.email}`} className="break-all text-sm text-indigo-700 hover:underline">{person.email}</a>)}</div> : <span className="text-sm text-slate-400">미등록</span>}</div>
+        <div className="xl:text-right"><OrganizationFollowUpDialog organization={item} today={today} contacts={contacts} /></div>
+      </article>; })}</div>
       {!loadError && !visible.length && <p className="p-8 text-center text-sm text-slate-500">{hasFilters ? "조건에 맞는 기관이 없습니다. 필터를 바꿔보세요." : "등록된 기관이 없습니다. 명함을 등록하면 여기에 표시됩니다."}</p>}
       {visible.length > 0 && <nav aria-label="기관 목록 페이지" className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-4 py-4 sm:px-6">
         <p className="text-sm text-slate-500">{(page - 1) * salesOrganizationPageSize + 1}–{Math.min(page * salesOrganizationPageSize, visible.length)} / {visible.length}개</p>

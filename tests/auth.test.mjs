@@ -582,6 +582,67 @@ test("organization follow-up saves edited contact state as a new record", async 
   assert.equal((await actions.recordOrganizationContactState({ error: "", saved: false }, form)).saved, false);
 });
 
+test("organization follow-up adds a replacement contact and makes it the preferred contact", async () => {
+  const createdId = "33333333-3333-3333-3333-333333333333";
+  const writes = [];
+  const db = {
+    from(table) {
+      return {
+        insert(payload) { writes.push(["insert", table, payload]); return { select() { return { single: async () => ({ data: { id: createdId }, error: null }) }; } }; },
+        update(payload) { writes.push(["update", table, payload]); return { eq: async () => ({ error: null }) }; },
+      };
+    },
+    rpc: async () => ({ error: null }),
+  };
+  const actions = load("src/app/admin/sales/actions.ts", {
+    "next/cache": { revalidatePath() {} }, "next/navigation": { redirect },
+    "@/server/admin-auth": { requireAdmin: async () => ({ supabase: { schema: () => db } }) },
+    "@/server/google-calendar": { getCalendarConnection: async () => null },
+  });
+  const form = new FormData();
+  form.set("organization_id", "22222222-2222-2222-2222-222222222222");
+  form.set("visit_date", "2026-10-20"); form.set("visit_region", "광주 북구");
+  form.set("proposal_status", "submitted"); form.set("reaction", "reviewing");
+  form.set("contact_method", "call"); form.set("update_date", "2026-10-29");
+  form.set("summary", "새 담당자에게 연락");
+  form.set("contact_id", "new"); form.set("contact_name", "김새로"); form.set("contact_email", "new@example.com");
+  assert.equal((await actions.recordOrganizationContactState({ error: "", saved: false }, form)).saved, true);
+  assert.deepEqual(JSON.parse(JSON.stringify(writes[0])), ["insert", "sales_contacts", { organization_id: "22222222-2222-2222-2222-222222222222", name: "김새로", email: "new@example.com" }]);
+  assert.deepEqual(JSON.parse(JSON.stringify(writes[1])), ["update", "sales_organizations", { next_contact_id: createdId }]);
+});
+
+test("organization follow-up updates the selected contact's name and email", async () => {
+  const contactId = "33333333-3333-3333-3333-333333333333";
+  const writes = [];
+  const db = {
+    from(table) {
+      if (table === "sales_contacts") return {
+        select() { return { eq() { return { eq() { return { maybeSingle: async () => ({ data: { name: "이전 담당자", email: "old@example.com" }, error: null }) }; } }; } }; },
+        update(payload) { writes.push([table, payload]); return { eq() { return { eq: async () => ({ error: null }) }; } }; },
+      };
+      return { update(payload) { writes.push([table, payload]); return { eq: async () => ({ error: null }) }; } };
+    },
+    rpc: async () => ({ error: null }),
+  };
+  const actions = load("src/app/admin/sales/actions.ts", {
+    "next/cache": { revalidatePath() {} }, "next/navigation": { redirect },
+    "@/server/admin-auth": { requireAdmin: async () => ({ supabase: { schema: () => db } }) },
+    "@/server/google-calendar": { getCalendarConnection: async () => null },
+  });
+  const form = new FormData();
+  form.set("organization_id", "22222222-2222-2222-2222-222222222222");
+  form.set("visit_date", "2026-10-20"); form.set("visit_region", "광주 북구");
+  form.set("proposal_status", "submitted"); form.set("reaction", "reviewing");
+  form.set("contact_method", "call"); form.set("update_date", "2026-10-29");
+  form.set("summary", "담당자 정보 수정");
+  form.set("contact_id", contactId); form.set("contact_name", "새 이름"); form.set("contact_email", "new@example.com");
+  assert.equal((await actions.recordOrganizationContactState({ error: "", saved: false }, form)).saved, true);
+  assert.deepEqual(JSON.parse(JSON.stringify(writes)), [
+    ["sales_contacts", { name: "새 이름", email: "new@example.com" }],
+    ["sales_organizations", { next_contact_id: contactId }],
+  ]);
+});
+
 test("another business card at the same organization adds a contact without another organization card", async () => {
   const proposedId = "12345678-1234-1234-1234-123456789abc";
   const existingId = "22222222-2222-2222-2222-222222222222";

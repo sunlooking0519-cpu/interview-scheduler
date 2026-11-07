@@ -1,6 +1,6 @@
 import { koreaDateKey } from "./sales-follow-up";
 
-export type SalesOrganizationRow = { id: string; name: string; region: string | null; updated_at: string };
+export type SalesOrganizationRow = { id: string; name: string; region: string | null; updated_at: string; next_contact_id?: string | null };
 export type SalesStatusActivity = {
   organization_id: string;
   created_at: string;

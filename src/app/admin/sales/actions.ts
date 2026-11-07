@@ -283,6 +283,9 @@ export async function recordOrganizationContactState(_previous: { error: string;
   const contactMethod = field(data, "contact_method");
   const updateDate = field(data, "update_date");
   const summary = field(data, "summary", 5001);
+  const contactId = field(data, "contact_id");
+  const contactName = field(data, "contact_name", 121);
+  const contactEmail = field(data, "contact_email", 201);
   const occurredAt = new Date(`${visitDate}T12:00:00+09:00`);
   const updatedAt = new Date(`${updateDate}T12:00:00+09:00`);
   if (!uuidPattern.test(organizationId) || !/^\d{4}-\d{2}-\d{2}$/.test(visitDate)
@@ -294,10 +297,35 @@ export async function recordOrganizationContactState(_previous: { error: string;
     || !["not_submitted", "planned", "submitted"].includes(proposalStatus)
     || !["interested", "reviewing", "waiting", "neutral", "no_budget", "not_interested", "no_response"].includes(reaction)
     || !["visit", "call", "email", "referral"].includes(contactMethod)
-    || !summary || summary.length > 5000) {
+    || !summary || summary.length > 5000
+    || (contactId && contactId !== "new" && !uuidPattern.test(contactId))
+    || (contactId && (!contactName || contactName.length > 120 || contactEmail.length > 200
+      || (contactEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail))))) {
     return { error: "방문일, 업데이트 날짜, 지역, 제안서 상태, 반응과 특이사항을 확인해 주세요.", saved: false };
   }
-  const { error } = await supabase.schema("scheduler").rpc("record_organization_contact_state", {
+  const db = supabase.schema("scheduler");
+  let selectedContactId = "";
+  let originalContact: { name: string; email: string | null } | null = null;
+  let contactChanged = false;
+  if (contactId === "new") {
+    const { data: created, error: createError } = await db.from("sales_contacts")
+      .insert({ organization_id: organizationId, name: contactName, email: contactEmail || null }).select("id").single();
+    if (createError || !created) return { error: "새 담당자를 등록하지 못했습니다. 다시 시도해 주세요.", saved: false };
+    selectedContactId = created.id;
+  } else if (contactId) {
+    const { data: existing, error: lookupError } = await db.from("sales_contacts")
+      .select("name,email").eq("id", contactId).eq("organization_id", organizationId).maybeSingle();
+    if (lookupError || !existing) return { error: "선택한 담당자를 찾지 못했습니다. 목록을 새로고침해 주세요.", saved: false };
+    selectedContactId = contactId;
+    originalContact = { name: existing.name, email: existing.email };
+    contactChanged = existing.name !== contactName || (existing.email ?? "") !== contactEmail;
+    if (contactChanged) {
+      const { error: updateError } = await db.from("sales_contacts")
+        .update({ name: contactName, email: contactEmail || null }).eq("id", contactId).eq("organization_id", organizationId);
+      if (updateError) return { error: "담당자 정보를 수정하지 못했습니다. 다시 시도해 주세요.", saved: false };
+    }
+  }
+  const { error } = await db.rpc("record_organization_contact_state", {
     p_organization_id: organizationId,
     p_visit_date: visitDate,
     p_visit_region: visitRegion,
@@ -307,7 +335,21 @@ export async function recordOrganizationContactState(_previous: { error: string;
     p_summary: summary,
     p_update_date: updateDate,
   });
-  if (error) return { error: "후속관리 기록을 저장하지 못했습니다. DB 마이그레이션 적용 여부를 확인해 주세요.", saved: false };
+  if (error) {
+    if (contactId === "new" && selectedContactId) await db.from("sales_contacts").delete().eq("id", selectedContactId).eq("organization_id", organizationId);
+    else if (contactChanged && originalContact) await db.from("sales_contacts")
+      .update(originalContact).eq("id", contactId).eq("organization_id", organizationId);
+    return { error: "후속관리 기록을 저장하지 못했습니다. DB 마이그레이션 적용 여부를 확인해 주세요.", saved: false };
+  }
+  if (selectedContactId) {
+    const { error: preferredError } = await db.from("sales_organizations")
+      .update({ next_contact_id: selectedContactId }).eq("id", organizationId);
+    if (preferredError) {
+      revalidatePath("/admin/sales");
+      revalidatePath(salesPath(organizationId));
+      return { error: "접촉 기록과 담당자는 저장됐지만 대표 담당자 지정에 실패했습니다. 기관 상세에서 확인해 주세요.", saved: true };
+    }
+  }
   revalidatePath("/admin/sales");
   revalidatePath(salesPath(organizationId));
   return { error: "", saved: true };

@@ -9,5 +9,5 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     const { data: { user } } = await supabase.auth.getUser();
     role = String(user?.app_metadata.role ?? "");
   } catch { /* Login and signup also render inside this layout. */ }
-  return <><Header /><main className="mx-auto max-w-6xl px-4 py-6 md:px-6 md:py-12"><AdminNavigation role={role} />{children}</main></>;
+  return <><Header /><main className="mx-auto w-full max-w-[1680px] min-w-0 px-4 py-6 sm:px-6 lg:px-8 md:py-12"><AdminNavigation role={role} />{children}</main></>;
 }

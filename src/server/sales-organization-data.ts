@@ -7,6 +7,7 @@ import { buildSalesOrganizationList, type SalesOrganizationRow, type SalesStatus
 type Supabase = Awaited<ReturnType<typeof createClient>>;
 
 export type SalesListContact = {
+  id: string;
   organization_id: string;
   name: string;
   phone: string | null;
@@ -23,7 +24,7 @@ export async function loadSalesOrganizationData(supabase: Supabase) {
 
   for (let offset = 0; ; offset += 1000) {
     const result = await db.from("sales_organizations")
-      .select("id,name,region,updated_at")
+      .select("id,name,region,updated_at,next_contact_id")
       .order("updated_at", { ascending: false }).order("id").range(offset, offset + 999);
     if (result.error) { loadError = true; break; }
     const batch = (result.data ?? []) as SalesOrganizationRow[];
@@ -57,7 +58,7 @@ export async function loadSalesOrganizationData(supabase: Supabase) {
 
   for (let offset = 0; ; offset += 1000) {
     const result = await db.from("sales_contacts")
-      .select("organization_id,name,phone,mobile,email")
+      .select("id,organization_id,name,phone,mobile,email")
       .order("created_at", { ascending: true }).order("id").range(offset, offset + 999);
     if (result.error) { loadError = true; break; }
     const batch = (result.data ?? []) as SalesListContact[];
