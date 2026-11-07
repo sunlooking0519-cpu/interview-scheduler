@@ -276,6 +276,7 @@ export async function recordCardVisitDetails(_previous: { error: string; saved: 
 export async function recordOrganizationContactState(_previous: { error: string; saved: boolean }, data: FormData): Promise<{ error: string; saved: boolean }> {
   const { supabase } = await requireAdmin();
   const organizationId = field(data, "organization_id");
+  const organizationName = field(data, "organization_name", 201).replace(/\s+/g, " ");
   const visitDate = field(data, "visit_date");
   const visitRegion = field(data, "visit_region", 121);
   const proposalStatus = field(data, "proposal_status");
@@ -288,7 +289,8 @@ export async function recordOrganizationContactState(_previous: { error: string;
   const contactEmail = field(data, "contact_email", 201);
   const occurredAt = new Date(`${visitDate}T12:00:00+09:00`);
   const updatedAt = new Date(`${updateDate}T12:00:00+09:00`);
-  if (!uuidPattern.test(organizationId) || !/^\d{4}-\d{2}-\d{2}$/.test(visitDate)
+  if (!uuidPattern.test(organizationId) || (data.has("organization_name") && (!organizationName || organizationName.length > 200))
+    || !/^\d{4}-\d{2}-\d{2}$/.test(visitDate)
     || !Number.isFinite(occurredAt.getTime()) || koreaDateKey(occurredAt) !== visitDate
     || visitDate > koreaDateKey(new Date())
     || !/^\d{4}-\d{2}-\d{2}$/.test(updateDate)
@@ -301,28 +303,59 @@ export async function recordOrganizationContactState(_previous: { error: string;
     || (contactId && contactId !== "new" && !uuidPattern.test(contactId))
     || (contactId && (!contactName || contactName.length > 120 || contactEmail.length > 200
       || (contactEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail))))) {
-    return { error: "방문일, 업데이트 날짜, 지역, 제안서 상태, 반응과 특이사항을 확인해 주세요.", saved: false };
+    return { error: "기관명, 담당자, 방문일, 업데이트 날짜와 후속관리 내용을 확인해 주세요.", saved: false };
   }
   const db = supabase.schema("scheduler");
+  let originalName = "";
+  let nameChanged = false;
+  const restoreName = async () => {
+    if (nameChanged) await db.from("sales_organizations").update({ name: originalName })
+      .eq("id", organizationId).eq("name", organizationName);
+  };
+  if (data.has("organization_name")) {
+    const { data: organization, error: organizationError } = await db.from("sales_organizations")
+      .select("name").eq("id", organizationId).maybeSingle();
+    if (organizationError || !organization) return { error: "기관을 찾지 못했습니다. 목록을 새로고침해 주세요.", saved: false };
+    originalName = organization.name;
+    if (originalName !== organizationName) {
+      const { data: duplicate, error: duplicateError } = await db.rpc("find_sales_organization", { p_name: organizationName });
+      if (duplicateError) return { error: "기관명 중복 여부를 확인하지 못했습니다. 다시 시도해 주세요.", saved: false };
+      if (duplicate && duplicate !== organizationId) return { error: "같은 이름의 기관이 이미 있습니다. 기관명을 확인해 주세요.", saved: false };
+      const { data: renamed, error: renameError } = await db.from("sales_organizations")
+        .update({ name: organizationName }).eq("id", organizationId).eq("name", originalName).select("id").maybeSingle();
+      if (renameError?.code === "23505") return { error: "같은 이름의 기관이 이미 있습니다. 기관명을 확인해 주세요.", saved: false };
+      if (renameError || !renamed) return { error: "기관명을 수정하지 못했습니다. 목록을 새로고침한 뒤 다시 시도해 주세요.", saved: false };
+      nameChanged = true;
+    }
+  }
   let selectedContactId = "";
   let originalContact: { name: string; email: string | null } | null = null;
   let contactChanged = false;
   if (contactId === "new") {
     const { data: created, error: createError } = await db.from("sales_contacts")
       .insert({ organization_id: organizationId, name: contactName, email: contactEmail || null }).select("id").single();
-    if (createError || !created) return { error: "새 담당자를 등록하지 못했습니다. 다시 시도해 주세요.", saved: false };
+    if (createError || !created) {
+      await restoreName();
+      return { error: "새 담당자를 등록하지 못했습니다. 다시 시도해 주세요.", saved: false };
+    }
     selectedContactId = created.id;
   } else if (contactId) {
     const { data: existing, error: lookupError } = await db.from("sales_contacts")
       .select("name,email").eq("id", contactId).eq("organization_id", organizationId).maybeSingle();
-    if (lookupError || !existing) return { error: "선택한 담당자를 찾지 못했습니다. 목록을 새로고침해 주세요.", saved: false };
+    if (lookupError || !existing) {
+      await restoreName();
+      return { error: "선택한 담당자를 찾지 못했습니다. 목록을 새로고침해 주세요.", saved: false };
+    }
     selectedContactId = contactId;
     originalContact = { name: existing.name, email: existing.email };
     contactChanged = existing.name !== contactName || (existing.email ?? "") !== contactEmail;
     if (contactChanged) {
       const { error: updateError } = await db.from("sales_contacts")
         .update({ name: contactName, email: contactEmail || null }).eq("id", contactId).eq("organization_id", organizationId);
-      if (updateError) return { error: "담당자 정보를 수정하지 못했습니다. 다시 시도해 주세요.", saved: false };
+      if (updateError) {
+        await restoreName();
+        return { error: "담당자 정보를 수정하지 못했습니다. 다시 시도해 주세요.", saved: false };
+      }
     }
   }
   const { error } = await db.rpc("record_organization_contact_state", {
@@ -339,6 +372,7 @@ export async function recordOrganizationContactState(_previous: { error: string;
     if (contactId === "new" && selectedContactId) await db.from("sales_contacts").delete().eq("id", selectedContactId).eq("organization_id", organizationId);
     else if (contactChanged && originalContact) await db.from("sales_contacts")
       .update(originalContact).eq("id", contactId).eq("organization_id", organizationId);
+    await restoreName();
     return { error: "후속관리 기록을 저장하지 못했습니다. DB 마이그레이션 적용 여부를 확인해 주세요.", saved: false };
   }
   if (selectedContactId) {

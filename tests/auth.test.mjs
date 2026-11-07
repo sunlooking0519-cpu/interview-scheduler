@@ -643,6 +643,49 @@ test("organization follow-up updates the selected contact's name and email", asy
   ]);
 });
 
+test("organization follow-up renames only the selected institution and rejects a duplicate name", async () => {
+  const organizationId = "22222222-2222-2222-2222-222222222222";
+  const writes = [];
+  let duplicateId = null;
+  const db = {
+    from(table) {
+      assert.equal(table, "sales_organizations");
+      return {
+        select() { return { eq() { return { maybeSingle: async () => ({ data: { name: "기존 기관" }, error: null }) }; } }; },
+        update(payload) {
+          writes.push(payload);
+          const query = {
+            eq() { return query; }, select() { return query; },
+            maybeSingle: async () => ({ data: { id: organizationId }, error: null }),
+            then(resolve) { resolve({ error: null }); },
+          };
+          return query;
+        },
+      };
+    },
+    rpc: async (name) => name === "find_sales_organization" ? { data: duplicateId, error: null } : { error: null },
+  };
+  const actions = load("src/app/admin/sales/actions.ts", {
+    "next/cache": { revalidatePath() {} }, "next/navigation": { redirect },
+    "@/server/admin-auth": { requireAdmin: async () => ({ supabase: { schema: () => db } }) },
+    "@/server/google-calendar": { getCalendarConnection: async () => null },
+  });
+  const form = new FormData();
+  form.set("organization_id", organizationId); form.set("organization_name", "새 기관명");
+  form.set("visit_date", "2026-10-20"); form.set("visit_region", "광주 북구");
+  form.set("proposal_status", "submitted"); form.set("reaction", "reviewing");
+  form.set("contact_method", "call"); form.set("update_date", "2026-10-29");
+  form.set("summary", "기관명 수정");
+  assert.equal((await actions.recordOrganizationContactState({ error: "", saved: false }, form)).saved, true);
+  assert.deepEqual(JSON.parse(JSON.stringify(writes)), [{ name: "새 기관명" }]);
+  writes.length = 0;
+  duplicateId = "44444444-4444-4444-4444-444444444444";
+  const duplicate = await actions.recordOrganizationContactState({ error: "", saved: false }, form);
+  assert.equal(duplicate.saved, false);
+  assert.match(duplicate.error, /같은 이름의 기관/);
+  assert.equal(writes.length, 0);
+});
+
 test("another business card at the same organization adds a contact without another organization card", async () => {
   const proposedId = "12345678-1234-1234-1234-123456789abc";
   const existingId = "22222222-2222-2222-2222-222222222222";
