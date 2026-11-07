@@ -1,13 +1,14 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
-import { isAdmin, isInterviewStaff } from "../lib/supabase/admin-role";
+import { isAdmin, isInterviewStaff, isSalesStaff } from "../lib/supabase/admin-role";
 
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   const isLoginPage = ["/admin/login", "/admin/signup"].includes(request.nextUrl.pathname);
-  const adminOnly = request.nextUrl.pathname.startsWith("/admin/sales") || request.nextUrl.pathname.startsWith("/admin/members");
+  const adminOnly = request.nextUrl.pathname.startsWith("/admin/members");
+  const salesOnly = request.nextUrl.pathname.startsWith("/admin/sales");
 
   function loginRedirect() {
     const target = request.nextUrl.clone();
@@ -34,7 +35,7 @@ export async function proxy(request: NextRequest) {
 
   try {
     const { data: { user }, error } = await supabase.auth.getUser();
-    if (!isLoginPage && (error || !user || (adminOnly ? !isAdmin(user) : !isInterviewStaff(user)))) return loginRedirect();
+    if (!isLoginPage && (error || !user || (adminOnly ? !isAdmin(user) : salesOnly ? !isSalesStaff(user) : !isInterviewStaff(user)))) return loginRedirect();
   } catch {
     if (!isLoginPage) return loginRedirect();
   }

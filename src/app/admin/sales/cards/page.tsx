@@ -1,6 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
-import { requireAdmin } from "@/server/admin-auth";
+import { requireSalesStaff } from "@/server/admin-auth";
 import { BusinessCardRegistrationLauncher } from "@/features/admin/components/business-card-registration-launcher";
 import { CardVisitDialog } from "@/features/admin/components/card-visit-dialog";
 import { koreaDateKey } from "@/features/admin/sales-follow-up";
@@ -45,7 +45,7 @@ export default async function BusinessCardsPage({ searchParams }: {
 }) {
   const requestedQuery = (await searchParams).q;
   const q = (Array.isArray(requestedQuery) ? requestedQuery[0] : requestedQuery) ?? "";
-  const { supabase } = await requireAdmin();
+  const { supabase } = await requireSalesStaff();
   const db = supabase.schema("scheduler");
   const cardsResult = await db.from("sales_business_cards")
     .select("id,organization_id,contact_id,image_path,ocr_text,ocr_fields,created_at")

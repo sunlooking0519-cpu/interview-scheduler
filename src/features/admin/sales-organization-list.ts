@@ -1,7 +1,7 @@
 import { koreaDateKey } from "./sales-follow-up";
 import { isAutomaticSalesSummary } from "./sales-contact-state";
 
-export type SalesOrganizationRow = { id: string; name: string; region: string | null; updated_at: string; next_contact_id?: string | null };
+export type SalesOrganizationRow = { id: string; name: string; region: string | null; updated_at: string; next_contact_id?: string | null; workspace_id?: string; stage?: string };
 export type SalesStatusActivity = {
   organization_id: string;
   created_at: string;

@@ -17,6 +17,12 @@ function load(path, imports) {
     exports, FormData, Response, console, process, Buffer, URL, URLSearchParams, AbortSignal,
     createImageBitmap: imports.__createImageBitmap,
     require(name) {
+      if (name.endsWith("/admin-role") && name in imports) return {
+        ...imports[name], isSalesStaff: imports[name].isSalesStaff ?? imports[name].isInterviewStaff ?? imports[name].isAdmin,
+      };
+      if (name === "@/server/admin-auth" && name in imports) return {
+        ...imports[name], requireSalesStaff: imports[name].requireSalesStaff ?? imports[name].requireAdmin,
+      };
       if (name === "@/server/calendar-sync" && !(name in imports)) return { scheduleCalendarSync() {} };
       if (name === "@/features/admin/sales-follow-up" && !(name in imports)) return load("src/features/admin/sales-follow-up.ts", {});
       if ((name === "@/features/admin/sales-contact-state" || name === "./sales-contact-state") && !(name in imports)) return load("src/features/admin/sales-contact-state.ts", {});
@@ -31,7 +37,7 @@ function load(path, imports) {
   return exports;
 }
 
-const { isAdmin, isInterviewStaff } = load("lib/supabase/admin-role.ts", {});
+const { isAdmin, isInterviewStaff, isSalesStaff } = load("lib/supabase/admin-role.ts", {});
 const timeSlots = load("src/features/booking/time-slots.ts", {});
 const bookingDates = load("src/features/booking/dates.ts", {});
 const interviewOwner = load("src/features/booking/interview-owner.ts", {});
@@ -1387,6 +1393,8 @@ test("only trusted app_metadata grants administrator access", () => {
   assert.equal(isAdmin({ app_metadata: { role: "super_admin" } }), true);
   assert.equal(isAdmin({ app_metadata: { role: "instructor" } }), false);
   assert.equal(isInterviewStaff({ app_metadata: { role: "instructor" } }), true);
+  assert.equal(isSalesStaff({ app_metadata: { role: "instructor" } }), true);
+  assert.equal(isSalesStaff({ app_metadata: {}, user_metadata: { role: "instructor" } }), false);
   assert.equal(isInterviewStaff({ app_metadata: {}, user_metadata: { role: "instructor" } }), false);
   assert.equal(isAdmin({ app_metadata: {}, user_metadata: { role: "admin" } }), false);
   assert.equal(isAdmin({ app_metadata: { role: "candidate" } }), false);
@@ -1478,6 +1486,24 @@ test("server guard rejects missing, invalid and ordinary users", async () => {
     });
     await assert.rejects(requireAdmin(), /REDIRECT:\/admin\/login/);
   }
+});
+
+test("sales guard accepts approved instructors but keeps ordinary accounts out", async () => {
+  for (const role of ["instructor", "admin", "super_admin"]) {
+    const user = { id: "staff", app_metadata: { role } };
+    const { requireSalesStaff } = load("src/server/admin-auth.ts", {
+      "server-only": {}, "next/navigation": { redirect },
+      "../../lib/supabase/server": { createClient: async () => ({ auth: { getUser: async () => ({ data: { user }, error: null }) } }) },
+      "../../lib/supabase/admin-role": { isAdmin, isInterviewStaff, isSalesStaff },
+    });
+    assert.equal((await requireSalesStaff()).user.id, "staff");
+  }
+  const { requireSalesStaff } = load("src/server/admin-auth.ts", {
+    "server-only": {}, "next/navigation": { redirect },
+    "../../lib/supabase/server": { createClient: async () => ({ auth: { getUser: async () => ({ data: { user: { app_metadata: { role: "candidate" } } }, error: null }) } }) },
+    "../../lib/supabase/admin-role": { isAdmin, isInterviewStaff, isSalesStaff },
+  });
+  await assert.rejects(requireSalesStaff(), /REDIRECT:\/admin\/login/);
 });
 
 function actions(auth) {
@@ -1588,7 +1614,9 @@ test("proxy preserves refreshed cookies on allowed and denied requests without a
       ["/admin", admin, 200], ["/admin", null, 307],
       ["/admin", { app_metadata: {} }, 307], ["/admin/login", null, 200],
       ["/admin", { app_metadata: { role: "instructor" } }, 200],
-      ["/admin/sales", { app_metadata: { role: "instructor" } }, 307],
+      ["/admin/sales", { app_metadata: { role: "instructor" } }, 200],
+      ["/admin/sales/cards", { app_metadata: { role: "instructor" } }, 200],
+      ["/admin/sales", { app_metadata: { role: "candidate" } }, 307],
       ["/admin/members", { app_metadata: { role: "instructor" } }, 307],
       ["/admin/signup", null, 200],
     ]) {

@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { requireAdmin } from "@/server/admin-auth";
+import { requireAdmin, requireSalesStaff } from "@/server/admin-auth";
 import { scheduleCalendarSync, syncCalendarQueue } from "@/server/calendar-sync";
 import { getCalendarConnection } from "@/server/google-calendar";
 import type { SalesCardFields, SalesKind } from "@/features/admin/sales-card-ocr";
@@ -24,7 +24,7 @@ export async function createSalesLead(input: {
   imagePath: string;
   ocrText: string;
 }) {
-  const { user, supabase } = await requireAdmin();
+  const { user, supabase } = await requireSalesStaff();
   const organizationId = input.organizationId;
   const name = input.name.trim().replace(/\s+/g, " ");
   const contactInput = input.contact ?? { name: "", title: "", role: "", phone: "", mobile: "", email: "" };
@@ -83,7 +83,7 @@ export async function createSalesLead(input: {
 }
 
 export async function createOrganization(data: FormData) {
-  const { user, supabase } = await requireAdmin();
+  const { user, supabase } = await requireSalesStaff();
   const name = field(data, "name", 200).replace(/\s+/g, " ");
   const kind = field(data, "kind");
   if (!name || !["institution", "school", "other"].includes(kind)) throw new Error("기관명과 유형을 확인해 주세요.");
@@ -103,7 +103,7 @@ export async function createOrganization(data: FormData) {
 }
 
 export async function updateOrganization(data: FormData) {
-  const { supabase } = await requireAdmin();
+  const { supabase } = await requireSalesStaff();
   const id = validId(field(data, "id"));
   const name = field(data, "name", 200);
   const kind = field(data, "kind");
@@ -140,7 +140,7 @@ export async function updateOrganization(data: FormData) {
 }
 
 export async function createSalesActivity(data: FormData) {
-  const { supabase } = await requireAdmin();
+  const { supabase } = await requireSalesStaff();
   const organizationId = validId(field(data, "organization_id"));
   const contactId = field(data, "contact_id");
   const activityType = field(data, "activity_type");
@@ -190,7 +190,7 @@ export async function createSalesActivity(data: FormData) {
 }
 
 export async function editSalesActivity(_previous: { error: string; saved: boolean }, data: FormData): Promise<{ error: string; saved: boolean }> {
-  const { supabase } = await requireAdmin();
+  const { supabase } = await requireSalesStaff();
   const organizationId = field(data, "organization_id");
   const activityId = field(data, "activity_id");
   const expectedVersion = Number(field(data, "edit_version"));
@@ -236,7 +236,7 @@ export async function editSalesActivity(_previous: { error: string; saved: boole
 }
 
 export async function recordCardVisit(_previous: { error: string }, data: FormData): Promise<{ error: string }> {
-  const { supabase } = await requireAdmin();
+  const { supabase } = await requireSalesStaff();
   const cardId = field(data, "card_id");
   const contactId = field(data, "contact_id");
   const visitDate = field(data, "visit_date");
@@ -284,7 +284,7 @@ export async function recordCardVisit(_previous: { error: string }, data: FormDa
 }
 
 export async function recordCardVisitDetails(_previous: { error: string; saved: boolean }, data: FormData): Promise<{ error: string; saved: boolean }> {
-  const { supabase } = await requireAdmin();
+  const { supabase } = await requireSalesStaff();
   const cardId = field(data, "card_id");
   const contactId = field(data, "contact_id");
   const visitDate = field(data, "visit_date");
@@ -322,7 +322,7 @@ export async function recordCardVisitDetails(_previous: { error: string; saved: 
 }
 
 export async function recordOrganizationContactState(_previous: { error: string; saved: boolean }, data: FormData): Promise<{ error: string; saved: boolean }> {
-  const { supabase } = await requireAdmin();
+  const { supabase } = await requireSalesStaff();
   const organizationId = field(data, "organization_id");
   const organizationName = field(data, "organization_name", 201).replace(/\s+/g, " ");
   const visitDate = field(data, "visit_date");
@@ -464,7 +464,7 @@ export async function recordOrganizationContactState(_previous: { error: string;
 }
 
 export async function createContact(data: FormData) {
-  const { supabase } = await requireAdmin();
+  const { supabase } = await requireSalesStaff();
   const organization_id = validId(field(data, "organization_id"));
   const name = field(data, "name", 120);
   if (!name) throw new Error("담당자 이름을 입력해 주세요.");
@@ -474,7 +474,7 @@ export async function createContact(data: FormData) {
 }
 
 export async function updateContact(data: FormData) {
-  const { supabase } = await requireAdmin();
+  const { supabase } = await requireSalesStaff();
   const organization_id = validId(field(data, "organization_id"));
   const id = validId(field(data, "id"));
   const name = field(data, "name", 120);
@@ -485,7 +485,7 @@ export async function updateContact(data: FormData) {
 }
 
 export async function saveMeeting(data: FormData) {
-  const { supabase } = await requireAdmin();
+  const { supabase } = await requireSalesStaff();
   const organization_id = validId(field(data, "organization_id"));
   const id = field(data, "id");
   const title = field(data, "title", 200);
@@ -508,7 +508,7 @@ export async function saveMeeting(data: FormData) {
 }
 
 export async function createProposal(data: FormData) {
-  const { supabase } = await requireAdmin();
+  const { supabase } = await requireSalesStaff();
   const organization_id = validId(field(data, "organization_id"));
   const title = field(data, "title", 200);
   if (!title) throw new Error("제안서 제목을 입력해 주세요.");
@@ -518,7 +518,7 @@ export async function createProposal(data: FormData) {
 }
 
 export async function saveProposal(id: string, expectedRevision: number, title: string, body: string) {
-  const { supabase } = await requireAdmin();
+  const { supabase } = await requireSalesStaff();
   validId(id);
   if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 1 || !title.trim() || title.length > 200 || body.length > 100000) return { error: "제안서 내용을 확인해 주세요.", revision: expectedRevision };
   const { data, error } = await supabase.schema("scheduler").from("sales_proposals")
@@ -531,7 +531,7 @@ export async function saveProposal(id: string, expectedRevision: number, title: 
 }
 
 export async function restoreProposalVersion(proposalId: string, versionId: string, expectedRevision: number) {
-  const { supabase } = await requireAdmin();
+  const { supabase } = await requireSalesStaff();
   validId(proposalId); validId(versionId);
   const { data, error } = await supabase.schema("scheduler").from("sales_proposal_versions").select("title,body").eq("id", versionId).eq("proposal_id", proposalId).single();
   if (error || !data) return { error: "복원할 버전을 찾지 못했습니다.", revision: expectedRevision };
@@ -539,7 +539,7 @@ export async function restoreProposalVersion(proposalId: string, versionId: stri
 }
 
 export async function saveBusinessCard(input: { organizationId: string; contactId?: string; imagePath: string; ocrText: string; fields: Record<string, string> }) {
-  const { supabase } = await requireAdmin();
+  const { supabase } = await requireSalesStaff();
   validId(input.organizationId);
   if (!/^([0-9a-f-]{36})\/([0-9a-f-]{36})\.(jpg|png|webp)$/i.test(input.imagePath) || !input.imagePath.startsWith(`${input.organizationId}/`) || input.ocrText.length > 20000) return { error: "명함 파일 경로 또는 OCR 내용을 확인해 주세요." };
   const fields = Object.fromEntries(["name", "organization", "title", "phone", "mobile", "email", "role"].map((key) => [key, String(input.fields[key] ?? "").trim().slice(0, key === "role" ? 200 : 500)]));

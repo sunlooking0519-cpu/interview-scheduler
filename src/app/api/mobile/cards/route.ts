@@ -1,4 +1,4 @@
-import { isAdmin } from "../../../../../lib/supabase/admin-role";
+import { isSalesStaff } from "../../../../../lib/supabase/admin-role";
 import { mobileSupabase } from "@/server/mobile-supabase";
 import { saveSalesCard, type NewSalesCard } from "@/server/sales-card-create";
 
@@ -12,7 +12,7 @@ export async function GET(request: Request) {
   const token = auth.slice(7);
   const { client } = mobileSupabase(token);
   const { data: { user }, error } = await client.auth.getUser(token);
-  if (error || !user || !isAdmin(user)) return Response.json({ error: "관리자 로그인이 필요합니다." }, { status: 401 });
+  if (error || !user || !isSalesStaff(user)) return Response.json({ error: "관리자 로그인이 필요합니다." }, { status: 401 });
   const imagePath = new URL(request.url).searchParams.get("imagePath") ?? "";
   if (!cardPath.test(imagePath)) return Response.json({ error: "명함 경로를 확인해 주세요." }, { status: 400 });
   const found = await client.schema("scheduler").from("sales_business_cards")
@@ -28,7 +28,7 @@ export async function DELETE(request: Request) {
   const token = auth.slice(7);
   const { client } = mobileSupabase(token);
   const { data: { user }, error } = await client.auth.getUser(token);
-  if (error || !user || !isAdmin(user)) return Response.json({ error: "관리자 로그인이 필요합니다." }, { status: 401 });
+  if (error || !user || !isSalesStaff(user)) return Response.json({ error: "관리자 로그인이 필요합니다." }, { status: 401 });
   let imagePath = "";
   try { imagePath = String((await request.json()).imagePath ?? ""); }
   catch { return Response.json({ error: "명함 경로를 확인해 주세요." }, { status: 400 }); }
@@ -48,7 +48,7 @@ export async function POST(request: Request) {
   const token = auth.slice(7);
   const { client } = mobileSupabase(token);
   const { data: { user }, error } = await client.auth.getUser(token);
-  if (error || !user || !isAdmin(user)) return Response.json({ error: "관리자 로그인이 필요합니다." }, { status: 401 });
+  if (error || !user || !isSalesStaff(user)) return Response.json({ error: "관리자 로그인이 필요합니다." }, { status: 401 });
   if (Number(request.headers.get("content-length") ?? 0) > 30000) return Response.json({ error: "명함 정보가 너무 큽니다." }, { status: 413 });
   let input: NewSalesCard;
   try { input = await request.json(); } catch { return Response.json({ error: "명함 정보를 확인해 주세요." }, { status: 400 }); }

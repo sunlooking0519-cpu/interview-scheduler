@@ -1,4 +1,4 @@
-import { isAdmin } from "../../../../../lib/supabase/admin-role";
+import { isSalesStaff } from "../../../../../lib/supabase/admin-role";
 import { mobileSupabase } from "@/server/mobile-supabase";
 
 export const runtime = "nodejs";
@@ -15,7 +15,7 @@ export async function POST(request: Request) {
   }
   const { client, url, key } = mobileSupabase();
   const { data, error } = await client.auth.signInWithPassword({ email: body.email, password: body.password });
-  if (error || !data.user || !data.session || !isAdmin(data.user)) return failure("관리자 계정을 확인해 주세요.", 401);
+  if (error || !data.user || !data.session || !isSalesStaff(data.user)) return failure("관리자 계정을 확인해 주세요.", 401);
   return Response.json({ accessToken: data.session.access_token, refreshToken: data.session.refresh_token,
     expiresAt: data.session.expires_at, storageUrl: `${url}/storage/v1/object/sales-cards`, anonKey: key }, { headers });
 }
@@ -29,7 +29,7 @@ export async function PUT(request: Request) {
   const { data, error } = await client.auth.refreshSession({ refresh_token: body.refreshToken });
   if (error || !data.session) return failure("다시 로그인해 주세요.", 401);
   const verified = await client.auth.getUser(data.session.access_token);
-  if (verified.error || !verified.data.user || !isAdmin(verified.data.user)) return failure("관리자 계정을 확인해 주세요.", 403);
+  if (verified.error || !verified.data.user || !isSalesStaff(verified.data.user)) return failure("관리자 계정을 확인해 주세요.", 403);
   return Response.json({ accessToken: data.session.access_token, refreshToken: data.session.refresh_token,
     expiresAt: data.session.expires_at, storageUrl: `${url}/storage/v1/object/sales-cards`, anonKey: key }, { headers });
 }

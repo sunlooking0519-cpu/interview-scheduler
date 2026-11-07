@@ -8,3 +8,5 @@ export function isAdmin(user: Pick<User, "app_metadata">): boolean {
 export function isInterviewStaff(user: Pick<User, "app_metadata">): boolean {
   return isAdmin(user) || user.app_metadata.role === "instructor";
 }
+
+export const isSalesStaff = isInterviewStaff;

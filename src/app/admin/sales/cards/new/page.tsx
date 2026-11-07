@@ -1,11 +1,11 @@
 import Link from "next/link";
 import { BusinessCardRegistrationLauncher } from "@/features/admin/components/business-card-registration-launcher";
-import { requireAdmin } from "@/server/admin-auth";
+import { requireSalesStaff } from "@/server/admin-auth";
 
 export const dynamic = "force-dynamic";
 
 export default async function NewBusinessCardPage() {
-  await requireAdmin();
+  await requireSalesStaff();
   return <div className="space-y-6">
     <header className="rounded-3xl bg-slate-950 p-6 text-white sm:p-8">
       <Link href="/admin/sales/cards" className="text-sm font-semibold text-indigo-300">← 등록된 명함 목록</Link>

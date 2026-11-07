@@ -1,7 +1,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { notFound } from "next/navigation";
-import { requireAdmin } from "@/server/admin-auth";
+import { requireSalesStaff } from "@/server/admin-auth";
 import { BusinessCardUploader } from "@/features/admin/components/business-card-uploader";
 import { SalesContacts } from "@/features/admin/components/sales-contacts";
 import { ProposalEditor } from "@/features/admin/components/proposal-editor";
@@ -24,7 +24,7 @@ const displayDate = (value: string) => new Intl.DateTimeFormat("ko-KR", { timeZo
 export default async function OrganizationPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
-  const { supabase } = await requireAdmin();
+  const { supabase } = await requireSalesStaff();
   const db = supabase.schema("scheduler");
   const [{ data: organization, error: organizationError }, contactsResult, meetingsResult, proposalsResult, cardsResult, activitiesResult] = await Promise.all([
     db.from("sales_organizations").select("*").eq("id", id).maybeSingle(),

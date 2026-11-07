@@ -1,4 +1,4 @@
-import { requireAdmin } from "@/server/admin-auth";
+import { requireSalesStaff } from "@/server/admin-auth";
 import { loadSalesOrganizationData } from "@/server/sales-organization-data";
 import { createSalesExportWorkbook } from "@/server/sales-export-workbook";
 import {
@@ -14,7 +14,7 @@ const allowedCategories = new Set<string>(organizationCategoryOptions.map(([key]
 const allowedRegions = new Set<string>(salesRegionOptions);
 
 export async function POST(request: Request) {
-  const { supabase } = await requireAdmin();
+  const { supabase } = await requireSalesStaff();
   let input: { columns?: unknown; filters?: unknown };
   try {
     input = await request.json();

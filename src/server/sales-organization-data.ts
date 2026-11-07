@@ -22,12 +22,19 @@ export async function loadSalesOrganizationData(supabase: Supabase) {
   const contacts: SalesListContact[] = [];
   let loadError = false;
 
+  let hasWorkspace = true;
   for (let offset = 0; ; offset += 1000) {
     const result = await db.from("sales_organizations")
-      .select("id,name,region,updated_at,next_contact_id")
+      .select(`id,name,region,updated_at,next_contact_id${hasWorkspace ? ",workspace_id,stage" : ""}`)
       .order("updated_at", { ascending: false }).order("id").range(offset, offset + 999);
+    if (result.error && hasWorkspace && ["42703", "PGRST204"].includes(result.error.code)) {
+      hasWorkspace = false;
+      offset = -1000;
+      organizations.length = 0;
+      continue;
+    }
     if (result.error) { loadError = true; break; }
-    const batch = (result.data ?? []) as SalesOrganizationRow[];
+    const batch = (result.data ?? []) as unknown as SalesOrganizationRow[];
     organizations.push(...batch);
     if (batch.length < 1000) break;
   }

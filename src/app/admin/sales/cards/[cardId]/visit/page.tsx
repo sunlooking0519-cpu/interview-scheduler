@@ -3,14 +3,14 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { CardVisitForm } from "@/features/admin/components/card-visit-form";
 import { koreaDateKey } from "@/features/admin/sales-follow-up";
-import { requireAdmin } from "@/server/admin-auth";
+import { requireSalesStaff } from "@/server/admin-auth";
 
 export const dynamic = "force-dynamic";
 
 export default async function CardVisitPage({ params }: { params: Promise<{ cardId: string }> }) {
   const { cardId } = await params;
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cardId)) notFound();
-  const { supabase } = await requireAdmin();
+  const { supabase } = await requireSalesStaff();
   const db = supabase.schema("scheduler");
   const { data: card, error } = await db.from("sales_business_cards")
     .select("id,organization_id,contact_id,image_path").eq("id", cardId).maybeSingle();

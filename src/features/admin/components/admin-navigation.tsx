@@ -9,9 +9,11 @@ export function AdminNavigation({ role }: { role: string }) {
   if (pathname === "/admin/login" || pathname === "/admin/signup") return null;
   const links = [
     { href: "/admin", text: "면접 관리", active: pathname === "/admin" },
-    ...(["admin", "super_admin"].includes(role) ? [
+    ...(["admin", "super_admin", "instructor"].includes(role) ? [
       { href: "/admin/sales", text: "영업 관리", active: pathname === "/admin/sales" || (pathname.startsWith("/admin/sales/") && !pathname.startsWith("/admin/sales/cards")) },
       { href: "/admin/sales/cards", text: "명함 관리", active: pathname.startsWith("/admin/sales/cards") },
+    ] : []),
+    ...(["admin", "super_admin"].includes(role) ? [
       { href: "/admin/members", text: "강사 관리", active: pathname.startsWith("/admin/members") },
     ] : []),
   ];

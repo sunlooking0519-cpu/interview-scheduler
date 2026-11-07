@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { requireAdmin } from "@/server/admin-auth";
+import { requireSalesStaff } from "@/server/admin-auth";
+import { isAdmin } from "../../../../lib/supabase/admin-role";
 import { loadSalesOrganizationData } from "@/server/sales-organization-data";
 import { retrySalesCalendarSync } from "./actions";
 import { SalesDashboard } from "@/features/admin/components/sales-dashboard";
@@ -58,7 +59,7 @@ type FirstFollowUp = {
 export default async function SalesPage({ searchParams }: {
   searchParams: Promise<{ q?: string; category?: string; region?: string; contact?: string; page?: string; stage?: string; view?: string; sync?: string; saved?: string }>;
 }) {
-  const { supabase } = await requireAdmin();
+  const { user, supabase } = await requireSalesStaff();
   const { q = "", category = "", region = "", contact = "", page = "1", stage = "", view = "visits", sync = "", saved = "" } = await searchParams;
   const db = supabase.schema("scheduler");
   if (view === "visits") {
@@ -137,7 +138,7 @@ export default async function SalesPage({ searchParams }: {
     </section>
 
     <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
-      <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-lg font-bold">진행 단계</h2><p className="mt-1 text-sm text-slate-500">1차 메일은 기관 상세에서 후속 차수 `1차`로 기록하면 이 작업 큐에 자동으로 들어옵니다.</p></div><form action={retrySalesCalendarSync}><button className="rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:border-indigo-400">캘린더 동기화 재시도</button></form></div>
+      <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-lg font-bold">진행 단계</h2><p className="mt-1 text-sm text-slate-500">1차 메일은 기관 상세에서 후속 차수 `1차`로 기록하면 이 작업 큐에 자동으로 들어옵니다.</p></div>{isAdmin(user) && <form action={retrySalesCalendarSync}><button className="rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:border-indigo-400">캘린더 동기화 재시도</button></form>}</div>
       <div className="mt-4 grid grid-cols-3 gap-2 lg:grid-cols-6">{stageOrder.map((key) => <Link key={key} href={`/admin/sales?view=${view}&stage=${key}`} className={`rounded-xl border px-3 py-3 ${stage === key ? "border-indigo-500 bg-indigo-50" : "border-slate-200 bg-slate-50"}`}><p className="text-xs text-slate-500">{stages[key]}</p><p className="mt-1 text-xl font-bold">{organizations.filter((item) => item.stage === key).length}</p></Link>)}</div>
       {sync === "done" && <p role="status" className="mt-3 text-sm text-emerald-700">대기 중인 일정의 동기화를 처리했습니다.</p>}{sync === "retry" && <p role="alert" className="mt-3 text-sm text-amber-700">일부 일정이 아직 대기 중입니다. 잠시 후 다시 시도해 주세요.</p>}{sync === "error" && <p role="alert" className="mt-3 text-sm text-red-700">Google 연결을 확인해 주세요.</p>}
     </section>
