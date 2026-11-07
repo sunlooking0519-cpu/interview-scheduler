@@ -7,6 +7,8 @@ import { scheduleCalendarSync, syncCalendarQueue } from "@/server/calendar-sync"
 import { getCalendarConnection } from "@/server/google-calendar";
 import type { SalesCardFields, SalesKind } from "@/features/admin/sales-card-ocr";
 import { koreaDateKey } from "@/features/admin/sales-follow-up";
+import { buildSalesOrganizationList } from "@/features/admin/sales-organization-list";
+import { planSalesContactState } from "@/features/admin/sales-contact-state";
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const field = (data: FormData, key: string, max = 2000) => String(data.get(key) ?? "").trim().slice(0, max);
@@ -345,7 +347,7 @@ export async function recordOrganizationContactState(_previous: { error: string;
     || !["not_submitted", "planned", "submitted"].includes(proposalStatus)
     || !["interested", "reviewing", "waiting", "neutral", "no_budget", "not_interested", "no_response"].includes(reaction)
     || !["visit", "call", "email", "referral"].includes(contactMethod)
-    || !summary || summary.length > 5000
+    || summary.length > 5000
     || (contactId && contactId !== "new" && !uuidPattern.test(contactId))
     || (contactId && (!contactName || contactName.length > 120 || contactEmail.length > 200
       || (contactEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail))))) {
@@ -353,6 +355,7 @@ export async function recordOrganizationContactState(_previous: { error: string;
   }
   const db = supabase.schema("scheduler");
   let originalName = "";
+  let originalContact: { name: string; email: string | null } | null = null;
   let nameChanged = false;
   const restoreName = async () => {
     if (nameChanged) await db.from("sales_organizations").update({ name: originalName })
@@ -360,9 +363,33 @@ export async function recordOrganizationContactState(_previous: { error: string;
   };
   if (data.has("organization_name")) {
     const { data: organization, error: organizationError } = await db.from("sales_organizations")
-      .select("name").eq("id", organizationId).maybeSingle();
+      .select("id,name,region,updated_at,next_contact_id").eq("id", organizationId).maybeSingle();
     if (organizationError || !organization) return { error: "기관을 찾지 못했습니다. 목록을 새로고침해 주세요.", saved: false };
     originalName = organization.name;
+    if (contactId && contactId !== "new") {
+      const { data: existing, error: lookupError } = await db.from("sales_contacts")
+        .select("name,email").eq("id", contactId).eq("organization_id", organizationId).maybeSingle();
+      if (lookupError || !existing) return { error: "선택한 담당자를 찾지 못했습니다. 목록을 새로고침해 주세요.", saved: false };
+      originalContact = { name: existing.name, email: existing.email };
+    }
+    const { data: priorActivities, error: historyError } = await db.from("sales_activities")
+      .select("organization_id,created_at,occurred_at,activity_type,summary,reaction,proposal_status,visit_region,contact_method,management_updated_on")
+      .eq("organization_id", organizationId).order("created_at", { ascending: false }).limit(200);
+    if (historyError) return { error: "기존 활동 기록을 확인하지 못했습니다. 다시 시도해 주세요.", saved: false };
+    const previous = (priorActivities ?? []).length ? buildSalesOrganizationList([organization], priorActivities ?? [])[0] : null;
+    const extraChanges = [
+      ...(organization.name !== organizationName ? [`기관명: ${organization.name} → ${organizationName}`] : []),
+      ...(contactId === "new" ? [`새 담당자: ${contactName}`] : []),
+      ...(contactId && contactId !== "new" && organization.next_contact_id && organization.next_contact_id !== contactId ? ["담당자 변경"] : []),
+      ...(originalContact && (originalContact.name !== contactName || (originalContact.email ?? "") !== contactEmail) ? ["담당자 정보 변경"] : []),
+    ];
+    const planned = planSalesContactState(previous, {
+      visitDate, contactRegion: visitRegion, proposalStatus, reaction, contactMethod,
+      updateDate, updateDateChanged: field(data, "update_date_changed") === "true", note: summary, extraChanges,
+    });
+    if (!planned.summary) return { error: "변경된 내용이 없습니다. 새 접촉 내용이나 변경할 상태를 입력해 주세요.", saved: false };
+    if (planned.summary.length > 5000) return { error: "변경 내용이 너무 깁니다. 특이사항을 간결하게 입력해 주세요.", saved: false };
+    data.set("summary", planned.summary);
     if (originalName !== organizationName) {
       const { data: duplicate, error: duplicateError } = await db.rpc("find_sales_organization", { p_name: organizationName });
       if (duplicateError) return { error: "기관명 중복 여부를 확인하지 못했습니다. 다시 시도해 주세요.", saved: false };
@@ -375,7 +402,6 @@ export async function recordOrganizationContactState(_previous: { error: string;
     }
   }
   let selectedContactId = "";
-  let originalContact: { name: string; email: string | null } | null = null;
   let contactChanged = false;
   if (contactId === "new") {
     const { data: created, error: createError } = await db.from("sales_contacts")
@@ -386,15 +412,17 @@ export async function recordOrganizationContactState(_previous: { error: string;
     }
     selectedContactId = created.id;
   } else if (contactId) {
-    const { data: existing, error: lookupError } = await db.from("sales_contacts")
-      .select("name,email").eq("id", contactId).eq("organization_id", organizationId).maybeSingle();
-    if (lookupError || !existing) {
-      await restoreName();
-      return { error: "선택한 담당자를 찾지 못했습니다. 목록을 새로고침해 주세요.", saved: false };
+    if (!originalContact) {
+      const { data: existing, error: lookupError } = await db.from("sales_contacts")
+        .select("name,email").eq("id", contactId).eq("organization_id", organizationId).maybeSingle();
+      if (lookupError || !existing) {
+        await restoreName();
+        return { error: "선택한 담당자를 찾지 못했습니다. 목록을 새로고침해 주세요.", saved: false };
+      }
+      originalContact = { name: existing.name, email: existing.email };
     }
     selectedContactId = contactId;
-    originalContact = { name: existing.name, email: existing.email };
-    contactChanged = existing.name !== contactName || (existing.email ?? "") !== contactEmail;
+    contactChanged = originalContact.name !== contactName || (originalContact.email ?? "") !== contactEmail;
     if (contactChanged) {
       const { error: updateError } = await db.from("sales_contacts")
         .update({ name: contactName, email: contactEmail || null }).eq("id", contactId).eq("organization_id", organizationId);
@@ -411,7 +439,7 @@ export async function recordOrganizationContactState(_previous: { error: string;
     p_proposal_status: proposalStatus,
     p_reaction: reaction,
     p_contact_method: contactMethod,
-    p_summary: summary,
+    p_summary: field(data, "summary", 5001),
     p_update_date: updateDate,
   });
   if (error) {

@@ -1,4 +1,5 @@
 import { koreaDateKey } from "./sales-follow-up";
+import { isAutomaticSalesSummary } from "./sales-contact-state";
 
 export type SalesOrganizationRow = { id: string; name: string; region: string | null; updated_at: string; next_contact_id?: string | null };
 export type SalesStatusActivity = {
@@ -16,6 +17,7 @@ export type SalesStatusActivity = {
 };
 export type SalesOrganizationListRow = SalesOrganizationRow & {
   lastUpdatedAt: string;
+  managementUpdatedOn: string | null;
   visitDate: string | null;
   contactRegion: string;
   contactMethod: string;
@@ -101,7 +103,7 @@ export function buildSalesOrganizationList(
       }
       if (current.contactRegion === null && activity.visit_region) current.contactRegion = activity.visit_region;
       if (current.contactMethod === null && activity.contact_method) current.contactMethod = activity.contact_method;
-      if (current.notes === null && activity.summary) current.notes = activity.summary;
+      if (current.notes === null && activity.summary && !isAutomaticSalesSummary(activity.summary)) current.notes = activity.summary;
     }
     statuses.set(activity.organization_id, current);
   }
@@ -115,6 +117,7 @@ export function buildSalesOrganizationList(
         ? new Date(`${status.managementUpdatedOn}T12:00:00+09:00`).toISOString()
         : status?.lastActivityAt && status.lastActivityAt > organization.updated_at ? status.lastActivityAt : organization.updated_at,
       visitDate: status?.visitDate ?? null,
+      managementUpdatedOn: status?.managementUpdatedOn ?? null,
       contactRegion: status?.contactRegion ?? organization.region ?? "",
       contactMethod: status?.contactMethod ?? "visit",
       notes: status?.notes ?? "",

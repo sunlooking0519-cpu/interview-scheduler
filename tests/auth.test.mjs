@@ -19,6 +19,10 @@ function load(path, imports) {
     require(name) {
       if (name === "@/server/calendar-sync" && !(name in imports)) return { scheduleCalendarSync() {} };
       if (name === "@/features/admin/sales-follow-up" && !(name in imports)) return load("src/features/admin/sales-follow-up.ts", {});
+      if ((name === "@/features/admin/sales-contact-state" || name === "./sales-contact-state") && !(name in imports)) return load("src/features/admin/sales-contact-state.ts", {});
+      if (name === "@/features/admin/sales-organization-list" && !(name in imports)) return load("src/features/admin/sales-organization-list.ts", {
+        "./sales-follow-up": load("src/features/admin/sales-follow-up.ts", {}),
+      });
       if (name === "@/server/resumes" && !(name in imports)) return {};
       if (!(name in imports)) throw new Error(`Unexpected import: ${name}`);
       return imports[name];
@@ -98,6 +102,33 @@ test("all sales organizations sort by saved update time and retain the latest re
   assert.equal(rows[0].contactMethod, "call");
   assert.equal(rows[0].notes, "새로운 상담");
   assert.equal(rows[1].proposalStatus, null);
+});
+
+test("follow-up keeps the prior note visible while recording only new changes", () => {
+  const { planSalesContactState, automaticSalesSummaryPrefix } = load("src/features/admin/sales-contact-state.ts", {});
+  const followUp = load("src/features/admin/sales-follow-up.ts", {});
+  const { buildSalesOrganizationList } = load("src/features/admin/sales-organization-list.ts", { "./sales-follow-up": followUp });
+  const previous = { visitDate: "2026-11-03", contactRegion: "광주", proposalStatus: "planned",
+    reaction: "interested", contactMethod: "visit", managementUpdatedOn: "2026-11-07", notes: "1년치프로그램요청" };
+  const next = { visitDate: "2026-11-03", contactRegion: "광주", proposalStatus: "planned",
+    reaction: "interested", contactMethod: "visit", updateDate: "2026-11-08", note: "" };
+  assert.equal(planSalesContactState(previous, next).summary, "");
+  assert.equal(planSalesContactState(previous, { ...next, note: previous.notes }).summary, "");
+  const status = planSalesContactState(previous, { ...next, proposalStatus: "submitted" });
+  assert.match(status.summary, /^상태 변경 · 제안서 제출: 제출 예정 → 제출 완료$/);
+  assert.doesNotMatch(status.summary, /1년치프로그램요청/);
+  assert.equal(planSalesContactState(previous, { ...next, note: "견적서 요청" }).summary, "견적서 요청");
+  assert.match(planSalesContactState(previous, { ...next, updateDateChanged: true }).summary, /업데이트 날짜: 2026-11-07 → 2026-11-08/);
+  const organization = { id: "a", name: "기관", region: "광주", updated_at: "2026-11-03T00:00:00Z" };
+  const activities = [
+    { organization_id: "a", created_at: "2026-11-08T00:00:00Z", occurred_at: "2026-11-03T03:00:00Z", activity_type: "visit", summary: status.summary, reaction: "interested", proposal_status: "submitted", management_updated_on: "2026-11-08" },
+    { organization_id: "a", created_at: "2026-11-07T00:00:00Z", occurred_at: "2026-11-03T03:00:00Z", activity_type: "visit", summary: previous.notes, reaction: "interested", proposal_status: "planned", management_updated_on: "2026-11-07" },
+  ];
+  const [row] = buildSalesOrganizationList([organization], activities);
+  assert.equal(row.notes, previous.notes);
+  assert.equal(row.proposalStatus, "submitted");
+  assert.equal(row.managementUpdatedOn, "2026-11-08");
+  assert.ok(status.summary.startsWith(automaticSalesSummaryPrefix));
 });
 
 test("a follow-up's selected update date controls the list without changing its visit date", () => {
@@ -600,6 +631,43 @@ test("organization follow-up saves edited contact state as a new record", async 
   assert.equal((await actions.recordOrganizationContactState({ error: "", saved: false }, form)).saved, false);
 });
 
+test("unchanged follow-up does not insert a duplicate, while a status change does", async () => {
+  const organizationId = "22222222-2222-2222-2222-222222222222";
+  let written = null;
+  const organization = { id: organizationId, name: "다함께돌봄센터", region: "광주", updated_at: "2026-11-07T00:00:00Z", next_contact_id: null };
+  const activity = { organization_id: organizationId, created_at: "2026-11-07T05:00:00Z", occurred_at: "2026-11-03T03:00:00Z",
+    activity_type: "visit", summary: "1년치프로그램요청", reaction: "interested", proposal_status: "planned",
+    visit_region: "광주", contact_method: "visit", management_updated_on: "2026-11-07" };
+  const db = {
+    from(table) {
+      if (table === "sales_organizations") return { select() { return { eq() { return { maybeSingle: async () => ({ data: organization, error: null }) }; } }; } };
+      if (table === "sales_activities") return { select() { return { eq() { return { order() { return { limit: async () => ({ data: [activity], error: null }) }; } }; } }; } };
+      throw new Error(`Unexpected table: ${table}`);
+    },
+    rpc: async (name, args) => { assert.equal(name, "record_organization_contact_state"); written = args; return { error: null }; },
+  };
+  const actions = load("src/app/admin/sales/actions.ts", {
+    "next/cache": { revalidatePath() {} }, "next/navigation": { redirect },
+    "@/server/admin-auth": { requireAdmin: async () => ({ supabase: { schema: () => db } }) },
+    "@/server/google-calendar": { getCalendarConnection: async () => null },
+  });
+  const form = new FormData();
+  form.set("organization_id", organizationId); form.set("organization_name", organization.name);
+  form.set("visit_date", "2026-11-03"); form.set("visit_region", "광주");
+  form.set("proposal_status", "planned"); form.set("reaction", "interested");
+  form.set("contact_method", "visit"); form.set("update_date", "2026-11-08"); form.set("summary", "");
+  const unchanged = await actions.recordOrganizationContactState({ error: "", saved: false }, form);
+  assert.equal(unchanged.saved, false);
+  assert.match(unchanged.error, /변경된 내용이 없습니다/);
+  assert.equal(written, null);
+  form.set("proposal_status", "submitted");
+  const changed = await actions.recordOrganizationContactState({ error: "", saved: false }, form);
+  assert.equal(changed.saved, true);
+  assert.match(written.p_summary, /제안서 제출: 제출 예정 → 제출 완료/);
+  assert.doesNotMatch(written.p_summary, /1년치프로그램요청/);
+  assert.equal(written.p_update_date, "2026-11-08");
+});
+
 test("organization follow-up adds a replacement contact and makes it the preferred contact", async () => {
   const createdId = "33333333-3333-3333-3333-333333333333";
   const writes = [];
@@ -667,6 +735,9 @@ test("organization follow-up renames only the selected institution and rejects a
   let duplicateId = null;
   const db = {
     from(table) {
+      if (table === "sales_activities") return {
+        select() { return { eq() { return { order() { return { limit: async () => ({ data: [], error: null }) }; } }; } }; },
+      };
       assert.equal(table, "sales_organizations");
       return {
         select() { return { eq() { return { maybeSingle: async () => ({ data: { name: "기존 기관" }, error: null }) }; } }; },

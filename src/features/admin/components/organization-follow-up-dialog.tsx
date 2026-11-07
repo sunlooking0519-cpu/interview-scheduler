@@ -20,6 +20,7 @@ function FollowUpForm({ organization, today, contacts, onClose, onReset }: Follo
   const [contactId, setContactId] = useState(initialContact?.id ?? "new");
   const [contactName, setContactName] = useState(initialContact?.name ?? "");
   const [contactEmail, setContactEmail] = useState(initialContact?.email ?? "");
+  const [updateDateChanged, setUpdateDateChanged] = useState(false);
   const [state, action, pending] = useActionState(recordOrganizationContactState, { error: "", saved: false });
   const chooseContact = (id: string) => {
     const selected = contacts.find((item) => item.id === id);
@@ -46,8 +47,9 @@ function FollowUpForm({ organization, today, contacts, onClose, onReset }: Follo
     <label className="text-sm font-semibold text-slate-700">제안서 제출<select name="proposal_status" required defaultValue={organization.proposalStatus ?? ""} className={input}><option value="" disabled>상태 선택</option><option value="not_submitted">미제출</option><option value="planned">제출 예정</option><option value="submitted">제출 완료</option></select></label>
     <label className="text-sm font-semibold text-slate-700">반응<select name="reaction" required defaultValue={organization.reaction ?? ""} className={input}><option value="" disabled>반응 선택</option>{reactions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
     <label className="text-sm font-semibold text-slate-700">접촉 방식<select name="contact_method" required defaultValue={organization.visitDate ? organization.contactMethod : ""} className={input}><option value="" disabled>방식 선택</option><option value="visit">방문</option><option value="call">전화</option><option value="email">이메일</option><option value="referral">지인 소개</option></select></label>
-    <label className="text-sm font-semibold text-slate-700">업데이트 날짜<input type="date" name="update_date" required defaultValue={today} className={input} /><span className="mt-1 block text-xs font-normal text-slate-500">목록의 최근 업데이트 날짜와 정렬에 반영됩니다.</span></label>
-    <label className="text-sm font-semibold text-slate-700 sm:col-span-2">특이사항 · 상담 내용<textarea name="summary" required rows={4} maxLength={5000} defaultValue={organization.notes} placeholder="현재 상태와 다음에 확인할 내용을 적어 주세요." className={input} /></label>
+    <label className="text-sm font-semibold text-slate-700">업데이트 날짜<input type="date" name="update_date" required defaultValue={today} onChange={() => setUpdateDateChanged(true)} className={input} /><input type="hidden" name="update_date_changed" value={updateDateChanged ? "true" : "false"} /><span className="mt-1 block text-xs font-normal text-slate-500">목록의 최근 업데이트 날짜와 정렬에 반영됩니다.</span></label>
+    <label className="text-sm font-semibold text-slate-700 sm:col-span-2">기존 특이사항 · 상담 내용<textarea readOnly rows={4} value={organization.notes} placeholder="이전에 입력한 특이사항이 없습니다." className={`${input} bg-slate-100 text-slate-600`} /><span className="mt-1 block text-xs font-normal text-slate-500">이전 내용을 확인할 수 있습니다. 수정이 필요하면 활동 타임라인의 수정 버튼을 사용하세요.</span></label>
+    <label className="text-sm font-semibold text-slate-700 sm:col-span-2">이번에 추가할 특이사항<textarea name="summary" rows={4} maxLength={5000} placeholder="새롭게 확인한 내용만 입력하세요. 상태만 바꾸는 경우 비워 두어도 됩니다." className={input} /></label>
     {state.error && <p role="alert" className="rounded-xl bg-rose-50 p-3 text-sm text-rose-700 sm:col-span-2">{state.error}</p>}
     <div className="flex justify-end gap-2 sm:col-span-2">{onClose && <button type="button" onClick={onClose} className="rounded-xl border px-4 py-3 text-sm font-semibold">취소</button>}<button type="submit" disabled={pending} className="rounded-xl bg-indigo-600 px-5 py-3 text-sm font-bold text-white disabled:opacity-50">{pending ? "저장 중…" : "현재 상태 저장"}</button></div>
   </form>;
