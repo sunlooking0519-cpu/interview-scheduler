@@ -117,6 +117,24 @@ test("a follow-up's selected update date controls the list without changing its 
   assert.equal(rows[1].proposalStatus, "submitted");
 });
 
+test("editing an older activity refreshes the institution order without replacing its latest status", () => {
+  const followUp = load("src/features/admin/sales-follow-up.ts", {});
+  const { buildSalesOrganizationList } = load("src/features/admin/sales-organization-list.ts", { "./sales-follow-up": followUp });
+  const organizations = [
+    { id: "a", name: "가 기관", region: null, updated_at: "2026-10-20T00:00:00Z" },
+    { id: "b", name: "나 기관", region: null, updated_at: "2026-11-02T00:00:00Z" },
+  ];
+  const activities = [
+    { organization_id: "a", created_at: "2026-11-01T00:00:00Z", reaction: "reviewing", proposal_status: "submitted", activity_type: "visit" },
+    { organization_id: "a", created_at: "2026-10-25T00:00:00Z", edited_at: "2026-11-05T00:00:00Z", reaction: "interested", proposal_status: "planned", activity_type: "visit" },
+  ];
+  const rows = buildSalesOrganizationList(organizations, activities);
+  assert.equal(rows[0].id, "a");
+  assert.equal(rows[0].lastUpdatedAt, "2026-11-05T00:00:00Z");
+  assert.equal(rows[0].reaction, "reviewing");
+  assert.equal(rows[0].proposalStatus, "submitted");
+});
+
 test("sales organization filters combine institution type, region aliases, and contact name", () => {
   const followUp = load("src/features/admin/sales-follow-up.ts", {});
   const { salesOrganizationCategory, salesRegionGroup, filterSalesOrganizationList } = load(
@@ -684,6 +702,39 @@ test("organization follow-up renames only the selected institution and rejects a
   assert.equal(duplicate.saved, false);
   assert.match(duplicate.error, /같은 이름의 기관/);
   assert.equal(writes.length, 0);
+});
+
+test("activity edit sends only correction fields, checks version, and refreshes both views", async () => {
+  let written;
+  let rpcError = null;
+  const paths = [];
+  const actions = load("src/app/admin/sales/actions.ts", {
+    "next/cache": { revalidatePath(path) { paths.push(path); } }, "next/navigation": { redirect },
+    "@/server/admin-auth": { requireAdmin: async () => ({ supabase: { schema: () => ({
+      rpc: async (name, args) => { assert.equal(name, "edit_sales_activity"); written = args; return { error: rpcError }; },
+    }) } }) },
+    "@/server/google-calendar": { getCalendarConnection: async () => null },
+  });
+  const form = new FormData();
+  form.set("organization_id", "22222222-2222-2222-2222-222222222222");
+  form.set("activity_id", "33333333-3333-3333-3333-333333333333");
+  form.set("edit_version", "2"); form.set("occurred_at", "2026-11-01T14:30");
+  form.set("contact_id", "44444444-4444-4444-4444-444444444444");
+  form.set("reaction", "reviewing"); form.set("summary", "수정한 상담 내용");
+  form.set("visit_region", "광주 북구"); form.set("proposal_status", "submitted");
+  form.set("contact_method", "call"); form.set("management_updated_on", "2026-11-02");
+  const result = await actions.editSalesActivity({ error: "", saved: false }, form);
+  assert.equal(result.saved, true);
+  assert.equal(written.p_expected_version, 2);
+  assert.equal(written.p_occurred_at, "2026-11-01T05:30:00.000Z");
+  assert.equal(written.p_management_updated_on, "2026-11-02");
+  assert.ok(!("p_follow_up_round" in written));
+  assert.ok(paths.includes("/admin/sales"));
+  assert.ok(paths.includes("/admin/sales/22222222-2222-2222-2222-222222222222"));
+  rpcError = { code: "40001" };
+  assert.match((await actions.editSalesActivity({ error: "", saved: false }, form)).error, /다른 관리자/);
+  form.set("edit_version", "-1");
+  assert.equal((await actions.editSalesActivity({ error: "", saved: false }, form)).saved, false);
 });
 
 test("another business card at the same organization adds a contact without another organization card", async () => {

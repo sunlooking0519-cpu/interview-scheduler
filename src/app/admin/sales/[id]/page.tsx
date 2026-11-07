@@ -6,6 +6,7 @@ import { BusinessCardUploader } from "@/features/admin/components/business-card-
 import { SalesContacts } from "@/features/admin/components/sales-contacts";
 import { ProposalEditor } from "@/features/admin/components/proposal-editor";
 import { OrganizationFollowUpEditor } from "@/features/admin/components/organization-follow-up-dialog";
+import { SalesActivityTimeline } from "@/features/admin/components/sales-activity-timeline";
 import { buildSalesOrganizationList } from "@/features/admin/sales-organization-list";
 import { koreaDateKey } from "@/features/admin/sales-follow-up";
 import { followUpStatusLabels, nextActionTypeLabels } from "@/features/admin/sales-follow-up";
@@ -14,8 +15,6 @@ import { createProposal, createSalesActivity, saveMeeting, updateOrganization } 
 export const dynamic = "force-dynamic";
 
 const stageLabels: Record<string, string> = { lead: "신규", contacted: "접촉", meeting: "상담", proposal: "제안", won: "성사", lost: "종료" };
-const activityLabels: Record<string, string> = { visit: "방문", call: "전화", email: "메일", proposal: "제안서", meeting: "상담", note: "메모" };
-const reactionLabels: Record<string, string> = { interested: "관심 높음", reviewing: "검토 중", waiting: "시기 대기", neutral: "보통", no_budget: "예산 없음", not_interested: "관심 없음", no_response: "응답 없음" };
 const input = "w-full min-w-0 rounded-xl border border-slate-300 bg-white p-3 text-sm";
 const label = "block text-sm font-medium text-slate-700";
 const card = "rounded-2xl border border-slate-200 bg-white p-4 sm:p-6";
@@ -44,7 +43,10 @@ export default async function OrganizationPage({ params }: { params: Promise<{ i
   const statusActivities = activitiesResult.data ?? [];
   const activities = [...statusActivities].sort((a, b) => b.occurred_at.localeCompare(a.occurred_at)).slice(0, 100);
   const followUpOrganization = buildSalesOrganizationList([organization], statusActivities)[0];
-  const contactNames = new Map(contacts.map((contact) => [contact.id, contact.name]));
+  const revisionsResult = await db.from("sales_activity_revisions")
+    .select("id,activity_id,version,changed_at,changed_by_email,before_data,after_data")
+    .eq("organization_id", id).order("changed_at", { ascending: false }).limit(1000);
+  const editingEnabled = !revisionsResult.error && activities.every((activity) => typeof activity.edit_version === "number");
   const versionResults = await Promise.all(proposals.map((proposal) => db.from("sales_proposal_versions").select("id,revision_number,title,created_at").eq("proposal_id", proposal.id).order("revision_number", { ascending: false }).limit(20)));
   const signedCards = await Promise.all(cards.map(async (businessCard) => ({ ...businessCard, url: (await supabase.storage.from("sales-cards").createSignedUrl(businessCard.image_path, 60 * 5)).data?.signedUrl ?? "" })));
   const nextActionAt = organization.next_action_at ? displayDate(organization.next_action_at) : "날짜 미정";
@@ -75,7 +77,7 @@ export default async function OrganizationPage({ params }: { params: Promise<{ i
       <section id="quick-log" className={`${card} scroll-mt-6 border-indigo-200 shadow-sm`}>
         <p className="text-xs font-bold tracking-[0.16em] text-indigo-600">QUICK LOG</p><h2 className="mt-2 text-xl font-bold">방금 한 영업 활동 기록</h2><p className="mt-1 text-sm text-slate-500">전체 기관의 후속관리와 같은 항목으로 현재 상태를 기록합니다.</p>
         <OrganizationFollowUpEditor organization={followUpOrganization} contacts={contacts.map((contact) => ({ id: contact.id, name: contact.name, email: contact.email }))} today={koreaDateKey(new Date())} />
-        <details className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
+        <details id="advanced-activity-log" className="mt-5 scroll-mt-6 rounded-xl border border-slate-200 bg-slate-50 p-4">
           <summary className="cursor-pointer text-sm font-bold text-indigo-700">후속 차수·다음 행동 상세 기록</summary>
           <p className="mt-2 text-xs text-slate-600">1차 메일, 2차 연락, 다음 행동 기한을 관리할 때 사용합니다.</p>
         <form action={createSalesActivity} className="mt-5 grid gap-3 sm:grid-cols-2">
@@ -94,9 +96,7 @@ export default async function OrganizationPage({ params }: { params: Promise<{ i
       </section>
 
       <section className={card}>
-        <div className="flex items-center justify-between"><div><p className="text-xs font-bold tracking-[0.16em] text-slate-500">HISTORY</p><h2 className="mt-2 text-xl font-bold">활동 타임라인</h2></div><span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">{activities.length}건</span></div>
-        <ol className="mt-5 space-y-4">{activities.map((activity) => <li key={activity.id} className="relative border-l-2 border-indigo-100 pl-4"><span className="absolute -left-[7px] top-1.5 h-3 w-3 rounded-full border-2 border-white bg-indigo-500"/><div className="flex flex-wrap items-center gap-2"><span className="text-xs font-bold text-indigo-700">{activityLabels[activity.activity_type] ?? activity.activity_type}</span>{activity.follow_up_round && <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-bold text-emerald-700">{activity.follow_up_round}차 후속</span>}<span className="text-xs text-slate-400">{displayDate(activity.occurred_at)}</span></div><p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-800">{activity.summary}</p><p className="mt-1 text-xs text-slate-500">{reactionLabels[activity.reaction] ?? activity.reaction}{activity.contact_id && contactNames.get(activity.contact_id) ? ` · ${contactNames.get(activity.contact_id)}` : ""}</p></li>)}</ol>
-        {!activities.length && <div className="mt-5 rounded-xl bg-slate-50 p-6 text-center text-sm text-slate-500">첫 방문이나 전화 결과를 왼쪽에서 기록해 주세요.</div>}
+        <SalesActivityTimeline activities={activities} contacts={contacts.map((contact) => ({ id: contact.id, name: contact.name }))} revisions={revisionsResult.data ?? []} editingEnabled={editingEnabled} />
       </section>
     </div>
 

@@ -187,6 +187,52 @@ export async function createSalesActivity(data: FormData) {
   revalidatePath("/admin/sales");
 }
 
+export async function editSalesActivity(_previous: { error: string; saved: boolean }, data: FormData): Promise<{ error: string; saved: boolean }> {
+  const { supabase } = await requireAdmin();
+  const organizationId = field(data, "organization_id");
+  const activityId = field(data, "activity_id");
+  const expectedVersion = Number(field(data, "edit_version"));
+  const contactId = field(data, "contact_id");
+  const occurredAt = toKoreaDate(field(data, "occurred_at"));
+  const reaction = field(data, "reaction");
+  const summary = field(data, "summary", 5001);
+  const visitRegion = field(data, "visit_region", 121);
+  const proposalStatus = field(data, "proposal_status");
+  const contactMethod = field(data, "contact_method");
+  const updateDate = field(data, "management_updated_on");
+  const updateDateValue = updateDate ? new Date(`${updateDate}T12:00:00+09:00`) : null;
+  if (!uuidPattern.test(organizationId) || !uuidPattern.test(activityId)
+    || !Number.isSafeInteger(expectedVersion) || expectedVersion < 0
+    || (contactId && !uuidPattern.test(contactId))
+    || !Number.isFinite(occurredAt.getTime())
+    || !["interested", "reviewing", "waiting", "neutral", "no_budget", "not_interested", "no_response"].includes(reaction)
+    || !summary || summary.length > 5000 || visitRegion.length > 120
+    || (proposalStatus && !["not_submitted", "planned", "submitted"].includes(proposalStatus))
+    || (contactMethod && !["visit", "call", "email", "referral"].includes(contactMethod))
+    || (updateDate && (!/^\d{4}-\d{2}-\d{2}$/.test(updateDate) || !updateDateValue || !Number.isFinite(updateDateValue.getTime()) || koreaDateKey(updateDateValue) !== updateDate))) {
+    return { error: "활동 날짜, 담당자와 기록 내용을 확인해 주세요.", saved: false };
+  }
+  const { error } = await supabase.schema("scheduler").rpc("edit_sales_activity", {
+    p_activity_id: activityId,
+    p_organization_id: organizationId,
+    p_expected_version: expectedVersion,
+    p_contact_id: contactId || null,
+    p_occurred_at: occurredAt.toISOString(),
+    p_reaction: reaction,
+    p_summary: summary,
+    p_visit_region: visitRegion || null,
+    p_proposal_status: proposalStatus || null,
+    p_contact_method: contactMethod || null,
+    p_management_updated_on: updateDate || null,
+  });
+  if (error?.code === "40001") return { error: "다른 관리자가 먼저 수정했습니다. 화면을 새로고침한 뒤 다시 확인해 주세요.", saved: false };
+  if (error?.code === "P0002") return { error: "활동 기록을 찾지 못했습니다. 화면을 새로고침해 주세요.", saved: false };
+  if (error) return { error: "활동 기록을 수정하지 못했습니다. 활동 수정 SQL 적용 여부를 확인해 주세요.", saved: false };
+  revalidatePath(salesPath(organizationId));
+  revalidatePath("/admin/sales");
+  return { error: "", saved: true };
+}
+
 export async function recordCardVisit(_previous: { error: string }, data: FormData): Promise<{ error: string }> {
   const { supabase } = await requireAdmin();
   const cardId = field(data, "card_id");
