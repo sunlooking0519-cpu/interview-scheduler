@@ -5,6 +5,9 @@ import { requireAdmin } from "@/server/admin-auth";
 import { BusinessCardUploader } from "@/features/admin/components/business-card-uploader";
 import { SalesContacts } from "@/features/admin/components/sales-contacts";
 import { ProposalEditor } from "@/features/admin/components/proposal-editor";
+import { OrganizationFollowUpEditor } from "@/features/admin/components/organization-follow-up-dialog";
+import { buildSalesOrganizationList } from "@/features/admin/sales-organization-list";
+import { koreaDateKey } from "@/features/admin/sales-follow-up";
 import { followUpStatusLabels, nextActionTypeLabels } from "@/features/admin/sales-follow-up";
 import { createProposal, createSalesActivity, saveMeeting, updateOrganization } from "../actions";
 
@@ -30,7 +33,7 @@ export default async function OrganizationPage({ params }: { params: Promise<{ i
     db.from("sales_meetings").select("*").eq("organization_id", id).order("starts_at", { ascending: false }),
     db.from("sales_proposals").select("*").eq("organization_id", id).order("updated_at", { ascending: false }),
     db.from("sales_business_cards").select("*").eq("organization_id", id).order("created_at", { ascending: false }),
-    db.from("sales_activities").select("*").eq("organization_id", id).order("occurred_at", { ascending: false }).limit(100),
+    db.from("sales_activities").select("*").eq("organization_id", id).order("created_at", { ascending: false }).limit(1000),
   ]);
   if (organizationError || !organization) notFound();
   const loadError = contactsResult.error || meetingsResult.error || proposalsResult.error || cardsResult.error || activitiesResult.error;
@@ -38,7 +41,9 @@ export default async function OrganizationPage({ params }: { params: Promise<{ i
   const meetings = meetingsResult.data ?? [];
   const proposals = proposalsResult.data ?? [];
   const cards = cardsResult.data ?? [];
-  const activities = activitiesResult.data ?? [];
+  const statusActivities = activitiesResult.data ?? [];
+  const activities = [...statusActivities].sort((a, b) => b.occurred_at.localeCompare(a.occurred_at)).slice(0, 100);
+  const followUpOrganization = buildSalesOrganizationList([organization], statusActivities)[0];
   const contactNames = new Map(contacts.map((contact) => [contact.id, contact.name]));
   const versionResults = await Promise.all(proposals.map((proposal) => db.from("sales_proposal_versions").select("id,revision_number,title,created_at").eq("proposal_id", proposal.id).order("revision_number", { ascending: false }).limit(20)));
   const signedCards = await Promise.all(cards.map(async (businessCard) => ({ ...businessCard, url: (await supabase.storage.from("sales-cards").createSignedUrl(businessCard.image_path, 60 * 5)).data?.signedUrl ?? "" })));
@@ -68,7 +73,11 @@ export default async function OrganizationPage({ params }: { params: Promise<{ i
 
     <div className="grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(340px,0.9fr)]">
       <section id="quick-log" className={`${card} scroll-mt-6 border-indigo-200 shadow-sm`}>
-        <p className="text-xs font-bold tracking-[0.16em] text-indigo-600">QUICK LOG</p><h2 className="mt-2 text-xl font-bold">방금 한 영업 활동 기록</h2><p className="mt-1 text-sm text-slate-500">결과를 짧게 남기고 다음 행동과 날짜를 정하면 대시보드 할 일로 이어집니다.</p>
+        <p className="text-xs font-bold tracking-[0.16em] text-indigo-600">QUICK LOG</p><h2 className="mt-2 text-xl font-bold">방금 한 영업 활동 기록</h2><p className="mt-1 text-sm text-slate-500">전체 기관의 후속관리와 같은 항목으로 현재 상태를 기록합니다.</p>
+        <OrganizationFollowUpEditor organization={followUpOrganization} contacts={contacts.map((contact) => ({ id: contact.id, name: contact.name, email: contact.email }))} today={koreaDateKey(new Date())} />
+        <details className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
+          <summary className="cursor-pointer text-sm font-bold text-indigo-700">후속 차수·다음 행동 상세 기록</summary>
+          <p className="mt-2 text-xs text-slate-600">1차 메일, 2차 연락, 다음 행동 기한을 관리할 때 사용합니다.</p>
         <form action={createSalesActivity} className="mt-5 grid gap-3 sm:grid-cols-2">
           <input type="hidden" name="organization_id" value={id}/>
           <label className={label}>활동 유형<select name="activity_type" defaultValue={lastFollowUpRound === 0 ? "email" : "call"} className={`${input} mt-1`}><option value="visit">방문</option><option value="call">전화</option><option value="email">메일</option><option value="proposal">제안서 발송</option><option value="meeting">상담·미팅</option><option value="note">내부 메모</option></select></label>
@@ -81,6 +90,7 @@ export default async function OrganizationPage({ params }: { params: Promise<{ i
           <div className="rounded-xl bg-indigo-50 p-3 sm:col-span-2"><p className="text-sm font-bold text-indigo-950">다음 행동 예약</p><p className="mt-1 text-xs text-indigo-700">1차 메일 기록 후에는 2차 연락 방식과 기한을 함께 저장해야 대시보드 작업 큐에 나타납니다.</p><div className="mt-3 grid gap-3 sm:grid-cols-2"><label className={label}>다음에 할 일<input name="next_action" maxLength={500} defaultValue={defaultNextAction} placeholder="예: 2차 후속 전화" className={`${input} mt-1`}/></label><label className={label}>연락 방식<select name="next_action_type" defaultValue={organization.next_action_type ?? "call"} className={`${input} mt-1`}>{Object.entries(nextActionTypeLabels).map(([value, text]) => <option key={value} value={value}>{text}</option>)}</select></label><label className={label}>언제까지<input type="datetime-local" name="next_action_at" defaultValue={defaultNextActionAt} className={`${input} mt-1`}/></label><label className={label}>다음 담당자<select name="next_contact_id" defaultValue={defaultNextContactId} className={`${input} mt-1`}><option value="">기관 공통 / 미지정</option>{contacts.map((contact) => <option key={contact.id} value={contact.id}>{contact.name}{contact.title ? ` · ${contact.title}` : ""}</option>)}</select></label><label className={label}>활동 후 단계<select name="stage" defaultValue={organization.stage} className={`${input} mt-1`}><option value="lead">신규</option><option value="contacted">접촉</option><option value="meeting">상담</option><option value="proposal">제안</option><option value="won">성사</option><option value="lost">종료</option></select></label></div></div>
           <button className="rounded-xl bg-indigo-600 px-5 py-3 font-bold text-white sm:col-span-2 sm:justify-self-start">활동 저장 · 다음 행동 반영</button>
         </form>
+        </details>
       </section>
 
       <section className={card}>
