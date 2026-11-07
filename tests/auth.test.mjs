@@ -146,6 +146,18 @@ test("sales organization filters combine institution type, region aliases, and c
   }).map((row) => row.id).join(","), "a,c");
 });
 
+test("sales organization pages keep the filtered order and clamp invalid page numbers", () => {
+  const { paginateSalesOrganizations } = load("src/features/admin/sales-organization-list.ts", {
+    "./sales-follow-up": load("src/features/admin/sales-follow-up.ts", {}),
+  });
+  const rows = Array.from({ length: 57 }, (_, index) => index + 1);
+  assert.deepEqual(Array.from(paginateSalesOrganizations(rows, "2").rows), Array.from({ length: 25 }, (_, index) => index + 26));
+  assert.deepEqual(Array.from(paginateSalesOrganizations(rows, "3").rows), [51, 52, 53, 54, 55, 56, 57]);
+  assert.equal(paginateSalesOrganizations(rows, "999").page, 3);
+  assert.equal(paginateSalesOrganizations(rows, "nope").page, 1);
+  assert.equal(paginateSalesOrganizations([], "2").pageCount, 1);
+});
+
 test("sales export uses the visible institutions and selected column order in a valid xlsx", async () => {
   const followUp = load("src/features/admin/sales-follow-up.ts", {});
   const salesList = load("src/features/admin/sales-organization-list.ts", { "./sales-follow-up": followUp });

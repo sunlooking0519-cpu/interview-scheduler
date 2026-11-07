@@ -28,6 +28,14 @@ export const organizationCategoryOptions = [
   ["municipal", "시군구청"], ["education", "교육기관"], ["other", "그외"],
 ] as const;
 export const salesRegionOptions = ["전북", "광주", "서울", "대구", "부산", "대전", "경기"] as const;
+export const salesOrganizationPageSize = 25;
+
+export function paginateSalesOrganizations<T>(rows: T[], requestedPage: string | number) {
+  const pageCount = Math.max(1, Math.ceil(rows.length / salesOrganizationPageSize));
+  const parsed = Number(requestedPage);
+  const page = Number.isSafeInteger(parsed) && parsed > 0 ? Math.min(parsed, pageCount) : 1;
+  return { page, pageCount, rows: rows.slice((page - 1) * salesOrganizationPageSize, page * salesOrganizationPageSize) };
+}
 
 export function salesOrganizationCategory(name: string): string {
   const compact = name.replace(/\s+/g, "");

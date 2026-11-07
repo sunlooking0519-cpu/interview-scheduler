@@ -56,19 +56,19 @@ type FirstFollowUp = {
 };
 
 export default async function SalesPage({ searchParams }: {
-  searchParams: Promise<{ q?: string; category?: string; region?: string; contact?: string; stage?: string; view?: string; sync?: string; saved?: string }>;
+  searchParams: Promise<{ q?: string; category?: string; region?: string; contact?: string; page?: string; stage?: string; view?: string; sync?: string; saved?: string }>;
 }) {
   const { supabase } = await requireAdmin();
-  const { q = "", category = "", region = "", contact = "", stage = "", view = "visits", sync = "", saved = "" } = await searchParams;
+  const { q = "", category = "", region = "", contact = "", page = "1", stage = "", view = "visits", sync = "", saved = "" } = await searchParams;
   const db = supabase.schema("scheduler");
   if (view === "visits") {
     const { rows, activities, contacts, loadError } = await loadSalesOrganizationData(supabase);
-    const contactNames: Record<string, string[]> = {};
-    for (const item of contacts) (contactNames[item.organization_id] ??= []).push(item.name);
+    const contactsByOrganization: Record<string, { name: string; email: string | null }[]> = {};
+    for (const item of contacts) (contactsByOrganization[item.organization_id] ??= []).push({ name: item.name, email: item.email });
     return <SalesDashboard
       organizations={rows}
       recentActivities={activities.slice(0, 15)}
-      contactNames={contactNames} query={q} category={category} region={region} contact={contact}
+      contactsByOrganization={contactsByOrganization} query={q} category={category} region={region} contact={contact} requestedPage={page}
       saved={saved} loadError={loadError} today={koreaDateKey(new Date())}
     />;
   }
