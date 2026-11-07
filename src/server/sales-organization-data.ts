@@ -2,7 +2,7 @@ import "server-only";
 
 import type { createClient } from "../../lib/supabase/server";
 import type { DashboardActivity } from "@/features/admin/sales-dashboard-model";
-import { buildSalesOrganizationList, type SalesOrganizationRow, type SalesStatusActivity } from "@/features/admin/sales-organization-list";
+import { buildSalesOrganizationList, type SalesBusinessCardDate, type SalesOrganizationRow, type SalesStatusActivity } from "@/features/admin/sales-organization-list";
 
 type Supabase = Awaited<ReturnType<typeof createClient>>;
 
@@ -20,12 +20,13 @@ export async function loadSalesOrganizationData(supabase: Supabase) {
   const organizations: SalesOrganizationRow[] = [];
   const activities: (DashboardActivity & SalesStatusActivity)[] = [];
   const contacts: SalesListContact[] = [];
+  const cards: SalesBusinessCardDate[] = [];
   let loadError = false;
 
   let hasWorkspace = true;
   for (let offset = 0; ; offset += 1000) {
     const result = await db.from("sales_organizations")
-      .select(`id,name,region,updated_at,next_contact_id${hasWorkspace ? ",workspace_id,stage" : ""}`)
+      .select(`id,name,region,created_at,updated_at,next_contact_id${hasWorkspace ? ",workspace_id,stage" : ""}`)
       .order("updated_at", { ascending: false }).order("id").range(offset, offset + 999);
     if (result.error && hasWorkspace && ["42703", "PGRST204"].includes(result.error.code)) {
       hasWorkspace = false;
@@ -80,5 +81,15 @@ export async function loadSalesOrganizationData(supabase: Supabase) {
     if (batch.length < 1000) break;
   }
 
-  return { rows: buildSalesOrganizationList(organizations, activities), activities, contacts, loadError };
+  for (let offset = 0; ; offset += 1000) {
+    const result = await db.from("sales_business_cards")
+      .select("organization_id,created_at")
+      .order("created_at", { ascending: false }).order("id", { ascending: false }).range(offset, offset + 999);
+    if (result.error) { loadError = true; break; }
+    const batch = (result.data ?? []) as SalesBusinessCardDate[];
+    cards.push(...batch);
+    if (batch.length < 1000) break;
+  }
+
+  return { rows: buildSalesOrganizationList(organizations, activities, cards), activities, contacts, loadError };
 }

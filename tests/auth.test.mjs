@@ -110,6 +110,23 @@ test("all sales organizations sort by saved update time and retain the latest re
   assert.equal(rows[1].proposalStatus, null);
 });
 
+test("a workspace backfill does not make every institution look updated today, while a new card sorts first", () => {
+  const followUp = load("src/features/admin/sales-follow-up.ts", {});
+  const { buildSalesOrganizationList } = load("src/features/admin/sales-organization-list.ts", { "./sales-follow-up": followUp });
+  const organizations = [
+    { id: "old", name: "기존 기관", region: null, created_at: "2026-10-01T00:00:00Z", updated_at: "2026-11-08T02:00:00Z" },
+    { id: "active", name: "상담 기관", region: null, created_at: "2026-10-02T00:00:00Z", updated_at: "2026-11-08T02:00:00Z" },
+    { id: "new-card", name: "새 명함 기관", region: null, created_at: "2026-10-03T00:00:00Z", updated_at: "2026-11-08T02:00:00Z" },
+  ];
+  const activities = [{ organization_id: "active", created_at: "2026-11-06T03:00:00Z", activity_type: "visit", summary: "상담", reaction: "interested", proposal_status: "planned" }];
+  const cards = [{ organization_id: "new-card", created_at: "2026-11-08T04:00:00Z" }];
+  const rows = buildSalesOrganizationList(organizations, activities, cards);
+  assert.deepEqual(rows.map((row) => row.id), ["new-card", "active", "old"]);
+  assert.equal(rows[0].lastUpdatedAt, "2026-11-08T04:00:00Z");
+  assert.equal(rows[1].lastUpdatedAt, "2026-11-06T03:00:00Z");
+  assert.equal(rows[2].lastUpdatedAt, "2026-10-01T00:00:00Z");
+});
+
 test("follow-up keeps the prior note visible while recording only new changes", () => {
   const { planSalesContactState, automaticSalesSummaryPrefix } = load("src/features/admin/sales-contact-state.ts", {});
   const followUp = load("src/features/admin/sales-follow-up.ts", {});
@@ -156,8 +173,8 @@ test("a follow-up's selected update date controls the list without changing its 
   const followUp = load("src/features/admin/sales-follow-up.ts", {});
   const { buildSalesOrganizationList } = load("src/features/admin/sales-organization-list.ts", { "./sales-follow-up": followUp });
   const organizations = [
-    { id: "edited", name: "수정 기관", region: "광주", updated_at: "2026-11-01T08:00:00Z" },
-    { id: "other", name: "다른 기관", region: "전북", updated_at: "2026-10-20T08:00:00Z" },
+    { id: "edited", name: "수정 기관", region: "광주", created_at: "2026-09-01T08:00:00Z", updated_at: "2026-11-01T08:00:00Z" },
+    { id: "other", name: "다른 기관", region: "전북", created_at: "2026-10-20T08:00:00Z", updated_at: "2026-10-20T08:00:00Z" },
   ];
   const activities = [{ organization_id: "edited", created_at: "2026-11-01T08:00:00Z",
     management_updated_on: "2026-10-10", occurred_at: "2026-09-15T03:00:00Z",

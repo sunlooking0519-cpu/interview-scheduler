@@ -1,7 +1,8 @@
 import { koreaDateKey } from "./sales-follow-up";
 import { isAutomaticSalesSummary } from "./sales-contact-state";
 
-export type SalesOrganizationRow = { id: string; name: string; region: string | null; updated_at: string; next_contact_id?: string | null; workspace_id?: string; stage?: string };
+export type SalesOrganizationRow = { id: string; name: string; region: string | null; created_at?: string; updated_at: string; next_contact_id?: string | null; workspace_id?: string; stage?: string };
+export type SalesBusinessCardDate = { organization_id: string; created_at: string };
 export type SalesStatusActivity = {
   organization_id: string;
   created_at: string;
@@ -78,20 +79,23 @@ export function filterSalesOrganizationList(
 }
 
 export function buildSalesOrganizationList(
-  organizations: SalesOrganizationRow[], activities: SalesStatusActivity[],
+  organizations: SalesOrganizationRow[], activities: SalesStatusActivity[], cards: SalesBusinessCardDate[] = [],
 ): SalesOrganizationListRow[] {
   const statuses = new Map<string, {
-    lastActivityAt: string; lastEditedAt: string; managementUpdatedOn: string | null; visitDate: string | null; contactRegion: string | null;
+    lastActivityAt: string; lastActivityUpdateAt: string; lastEditedAt: string; managementUpdatedOn: string | null; visitDate: string | null; contactRegion: string | null;
     contactMethod: string | null; notes: string | null; proposalStatus: string | null; reaction: string | null;
   }>();
   for (const activity of activities) {
     const current = statuses.get(activity.organization_id) ?? {
-      lastActivityAt: "", lastEditedAt: "", managementUpdatedOn: null, visitDate: null, contactRegion: null,
+      lastActivityAt: "", lastActivityUpdateAt: "", lastEditedAt: "", managementUpdatedOn: null, visitDate: null, contactRegion: null,
       contactMethod: null, notes: null, proposalStatus: null, reaction: null,
     };
     if (activity.created_at > current.lastActivityAt) {
       current.lastActivityAt = activity.created_at;
       current.managementUpdatedOn = activity.management_updated_on ?? null;
+      current.lastActivityUpdateAt = activity.management_updated_on
+        ? new Date(`${activity.management_updated_on}T12:00:00+09:00`).toISOString()
+        : activity.created_at;
     }
     if (activity.edited_at && activity.edited_at > current.lastEditedAt) current.lastEditedAt = activity.edited_at;
     // The query is newest first. A later note without a proposal update keeps the previous status.
@@ -107,15 +111,20 @@ export function buildSalesOrganizationList(
     }
     statuses.set(activity.organization_id, current);
   }
+  const latestCardAt = new Map<string, string>();
+  for (const card of cards) {
+    const previous = latestCardAt.get(card.organization_id);
+    if (!previous || card.created_at > previous) latestCardAt.set(card.organization_id, card.created_at);
+  }
   return organizations.map((organization) => {
     const status = statuses.get(organization.id);
     return {
       ...organization,
-      lastUpdatedAt: status?.lastEditedAt && status.lastEditedAt > status.lastActivityAt
-        ? status.lastEditedAt
-        : status?.managementUpdatedOn
-        ? new Date(`${status.managementUpdatedOn}T12:00:00+09:00`).toISOString()
-        : status?.lastActivityAt && status.lastActivityAt > organization.updated_at ? status.lastActivityAt : organization.updated_at,
+      // updated_at was also touched by workspace backfills and other administrative migrations.
+      // Only user-facing records participate in the management order.
+      lastUpdatedAt: [organization.created_at ?? organization.updated_at, status?.lastActivityUpdateAt, status?.lastEditedAt, latestCardAt.get(organization.id)]
+        .filter((value): value is string => Boolean(value))
+        .sort().at(-1)!,
       visitDate: status?.visitDate ?? null,
       managementUpdatedOn: status?.managementUpdatedOn ?? null,
       contactRegion: status?.contactRegion ?? organization.region ?? "",
