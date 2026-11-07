@@ -131,6 +131,21 @@ test("follow-up keeps the prior note visible while recording only new changes", 
   assert.ok(status.summary.startsWith(automaticSalesSummaryPrefix));
 });
 
+test("timeline omits status-only records and repeated notes for the same visit", () => {
+  const { visibleSalesActivities } = load("src/features/admin/sales-contact-state.ts", {});
+  const records = [
+    { id: "new-note", activity_type: "visit", summary: "견적서 요청", occurred_at: "2026-11-03T03:00:00Z", created_at: "2026-11-09T00:00:00Z" },
+    { id: "status-only", activity_type: "visit", summary: "상태 변경 · 제안서 제출: 제출 예정 → 제출 완료", occurred_at: "2026-11-03T03:00:00Z", created_at: "2026-11-08T00:00:00Z" },
+    { id: "legacy-duplicate", activity_type: "visit", summary: "1년치프로그램요청", occurred_at: "2026-11-03T03:00:00Z", created_at: "2026-11-07T05:11:00Z" },
+    { id: "original", activity_type: "visit", summary: "1년치프로그램요청", occurred_at: "2026-11-03T03:00:00Z", created_at: "2026-11-07T05:00:00Z" },
+  ];
+  assert.deepEqual(Array.from(visibleSalesActivities(records), (item) => item.id), ["new-note", "original"]);
+  assert.deepEqual(Array.from(visibleSalesActivities([
+    { ...records[3], id: "later-visit", occurred_at: "2026-11-04T03:00:00Z", created_at: "2026-11-10T00:00:00Z" },
+    records[3],
+  ]), (item) => item.id), ["later-visit", "original"]);
+});
+
 test("a follow-up's selected update date controls the list without changing its visit date", () => {
   const followUp = load("src/features/admin/sales-follow-up.ts", {});
   const { buildSalesOrganizationList } = load("src/features/admin/sales-organization-list.ts", { "./sales-follow-up": followUp });

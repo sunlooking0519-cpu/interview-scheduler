@@ -35,3 +35,19 @@ export function planSalesContactState(previous: ContactState | null, next: {
 }
 
 export const isAutomaticSalesSummary = (value: string) => value.startsWith(automaticSalesSummaryPrefix);
+
+export function visibleSalesActivities<T extends { id: string; activity_type: string; summary: string; occurred_at: string; created_at: string }>(activities: T[]): T[] {
+  const hiddenIds = new Set<string>();
+  let previousRecordedVisit: T | null = null;
+  for (const activity of [...activities].sort((a, b) => a.created_at.localeCompare(b.created_at))) {
+    if (activity.activity_type !== "visit") continue;
+    if (isAutomaticSalesSummary(activity.summary)
+      || (previousRecordedVisit !== null && activity.summary.trim() === previousRecordedVisit.summary.trim()
+        && activity.occurred_at === previousRecordedVisit.occurred_at)) {
+      hiddenIds.add(activity.id);
+      continue;
+    }
+    previousRecordedVisit = activity;
+  }
+  return activities.filter((activity) => !hiddenIds.has(activity.id));
+}

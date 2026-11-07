@@ -3,7 +3,7 @@
 import { useActionState, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { editSalesActivity } from "@/app/admin/sales/actions";
-import { automaticSalesSummaryPrefix, isAutomaticSalesSummary } from "@/features/admin/sales-contact-state";
+import { visibleSalesActivities } from "@/features/admin/sales-contact-state";
 
 type Activity = {
   id: string; organization_id: string; activity_type: string; contact_id: string | null;
@@ -70,10 +70,11 @@ export function SalesActivityTimeline({ activities, contacts, revisions, editing
 }) {
   const router = useRouter();
   const [selected, setSelected] = useState<Activity | null>(null);
+  const visibleActivities = visibleSalesActivities(activities);
   const contactNames = new Map(contacts.map((person) => [person.id, person.name]));
   const previousVisitById = new Map<string, Activity>();
   let previousVisit: Activity | null = null;
-  for (const visit of [...activities].filter((item) => item.activity_type === "visit").sort((a, b) => a.created_at.localeCompare(b.created_at))) {
+  for (const visit of [...visibleActivities].filter((item) => item.activity_type === "visit").sort((a, b) => a.created_at.localeCompare(b.created_at))) {
     if (previousVisit) previousVisitById.set(visit.id, previousVisit);
     previousVisit = visit;
   }
@@ -88,9 +89,9 @@ export function SalesActivityTimeline({ activities, contacts, revisions, editing
     return text;
   };
   return <>
-    <div className="flex items-center justify-between"><div><p className="text-xs font-bold tracking-[0.16em] text-slate-500">HISTORY</p><h2 className="mt-2 text-xl font-bold">활동 타임라인</h2></div><span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">{activities.length}건</span></div>
+    <div className="flex items-center justify-between"><div><p className="text-xs font-bold tracking-[0.16em] text-slate-500">HISTORY</p><h2 className="mt-2 text-xl font-bold">활동 타임라인</h2></div><span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">{visibleActivities.length}건</span></div>
     {!editingEnabled && <p role="status" className="mt-4 rounded-xl bg-amber-50 p-3 text-sm text-amber-900">활동 수정 기능을 준비하지 못했습니다. Supabase의 활동 수정 SQL 적용 여부와 연결 상태를 확인해 주세요.</p>}
-    <ol className="mt-5 space-y-4">{activities.map((activity) => {
+    <ol className="mt-5 space-y-4">{visibleActivities.map((activity) => {
       const history = revisions.filter((revision) => revision.activity_id === activity.id);
       const previous = previousVisitById.get(activity.id);
       const changes: string[] = [];
@@ -99,13 +100,10 @@ export function SalesActivityTimeline({ activities, contacts, revisions, editing
         if (previous.reaction !== activity.reaction) changes.push(`반응 ${reactionLabels[previous.reaction] ?? previous.reaction} → ${reactionLabels[activity.reaction] ?? activity.reaction}`);
         if (previous.contact_method !== activity.contact_method) changes.push(`접촉 방식 ${methodLabels[previous.contact_method ?? ""] ?? "미기록"} → ${methodLabels[activity.contact_method ?? ""] ?? "미기록"}`);
       }
-      const generated = isAutomaticSalesSummary(activity.summary);
-      const repeatedNote = Boolean(previous && !generated && activity.summary === previous.summary);
-      const sameRecord = repeatedNote && changes.length === 0 && previous?.occurred_at === activity.occurred_at;
       return <li key={activity.id} className="relative border-l-2 border-indigo-100 pl-4"><span className="absolute -left-[7px] top-1.5 h-3 w-3 rounded-full border-2 border-white bg-indigo-500"/>
         <div className="flex flex-wrap items-center gap-2"><span className="text-xs font-bold text-indigo-700">{activityLabels[activity.activity_type] ?? activity.activity_type}</span>{activity.follow_up_round && <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-bold text-emerald-700">{activity.follow_up_round}차 후속</span>}<span className="text-xs text-slate-400">활동 {displayDate(activity.occurred_at)} · 기록 {displayDate(activity.created_at)}</span>{activity.edited_at && <span className="text-xs text-amber-700">수정됨</span>}</div>
-        <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-800">{generated ? activity.summary.slice(automaticSalesSummaryPrefix.length) : sameRecord ? "이전 기록과 동일한 내용으로 저장됨" : repeatedNote ? "기존 특이사항 유지" : activity.summary}</p>
-        {!generated && changes.length > 0 && <p className="mt-1 text-xs font-semibold text-indigo-700">{changes.join(" · ")}</p>}
+        <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-800">{activity.summary}</p>
+        {changes.length > 0 && <p className="mt-1 text-xs font-semibold text-indigo-700">{changes.join(" · ")}</p>}
         <p className="mt-1 text-xs text-slate-500">{reactionLabels[activity.reaction] ?? activity.reaction}{activity.contact_id && contactNames.get(activity.contact_id) ? ` · ${contactNames.get(activity.contact_id)}` : ""}{activity.contact_method ? ` · ${methodLabels[activity.contact_method] ?? activity.contact_method}` : ""}</p>
         <div className="mt-2 flex flex-wrap items-center gap-3">{editingEnabled && <button type="button" onClick={() => setSelected(activity)} className="text-xs font-bold text-indigo-700 underline">수정</button>}{history.length > 0 && <details className="text-xs text-slate-600"><summary className="cursor-pointer font-semibold">수정 이력 {history.length}건</summary><div className="mt-2 space-y-3">{history.map((revision) => {
           const changes = editableFields.filter(([key]) => revision.before_data[key] !== revision.after_data[key]);
@@ -113,7 +111,7 @@ export function SalesActivityTimeline({ activities, contacts, revisions, editing
         })}</div></details>}</div>
       </li>;
     })}</ol>
-    {!activities.length && <div className="mt-5 rounded-xl bg-slate-50 p-6 text-center text-sm text-slate-500">첫 방문이나 전화 결과를 왼쪽에서 기록해 주세요.</div>}
+    {!visibleActivities.length && <div className="mt-5 rounded-xl bg-slate-50 p-6 text-center text-sm text-slate-500">첫 방문이나 전화 결과를 왼쪽에서 기록해 주세요.</div>}
     {selected && <EditDialog key={`${selected.id}-${selected.edit_version ?? 0}`} activity={selected} contacts={contacts} onClose={() => { setSelected(null); router.refresh(); }} />}
   </>;
 }
