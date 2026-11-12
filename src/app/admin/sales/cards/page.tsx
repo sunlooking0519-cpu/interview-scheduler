@@ -1,9 +1,11 @@
 import Image from "next/image";
 import Link from "next/link";
+import { isAdmin } from "../../../../../lib/supabase/admin-role";
 import { requireSalesStaff } from "@/server/admin-auth";
 import { apkDownloadUrl } from "@/features/admin/business-card-app";
 import { BusinessCardRegistrationLauncher } from "@/features/admin/components/business-card-registration-launcher";
 import { CardVisitDialog } from "@/features/admin/components/card-visit-dialog";
+import { DeleteBusinessCardDialog } from "@/features/admin/components/delete-business-card-dialog";
 import { koreaDateKey } from "@/features/admin/sales-follow-up";
 
 export const dynamic = "force-dynamic";
@@ -18,7 +20,7 @@ type BusinessCard = {
   created_at: string;
 };
 
-type Organization = { id: string; name: string; region: string | null };
+type Organization = { id: string; name: string; region: string | null; created_by: string };
 type Contact = { id: string; name: string; title: string | null; email: string | null; phone: string | null; mobile: string | null };
 
 const fieldLabels: Record<string, string> = {
@@ -34,7 +36,7 @@ const displayDate = (value: string) => new Intl.DateTimeFormat("ko-KR", {
   timeZone: "Asia/Seoul",
   dateStyle: "medium",
   timeStyle: "short",
-}).format(new Date(value));
+}).format(new Date(value)) + " KST";
 
 function textField(fields: Record<string, unknown> | null, key: string) {
   const value = fields?.[key];
@@ -46,7 +48,7 @@ export default async function BusinessCardsPage({ searchParams }: {
 }) {
   const requestedQuery = (await searchParams).q;
   const q = (Array.isArray(requestedQuery) ? requestedQuery[0] : requestedQuery) ?? "";
-  const { supabase } = await requireSalesStaff();
+  const { user, supabase } = await requireSalesStaff();
   const db = supabase.schema("scheduler");
   const cardsResult = await db.from("sales_business_cards")
     .select("id,organization_id,contact_id,image_path,ocr_text,ocr_fields,created_at")
@@ -54,7 +56,7 @@ export default async function BusinessCardsPage({ searchParams }: {
     .limit(300);
   const cards = (cardsResult.data ?? []) as BusinessCard[];
   const [organizationsResult, contactsResult, visitsResult, signedResult] = await Promise.all([
-    db.from("sales_organizations").select("id,name,region").limit(1000),
+    db.from("sales_organizations").select("id,name,region,created_by").limit(1000),
     db.from("sales_contacts").select("id,name,title,email,phone,mobile").limit(3000),
     db.from("sales_activities").select("organization_id,contact_id").eq("activity_type", "visit").limit(3000),
     cards.length
@@ -103,7 +105,7 @@ export default async function BusinessCardsPage({ searchParams }: {
 
     <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
       <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-        <div><h2 className="text-xl font-bold">등록된 명함 <span className="text-indigo-600">{cards.length}</span></h2><p className="mt-1 text-sm text-slate-500">{normalizedQuery ? `검색 결과 ${visibleCards.length}건 · ` : ""}최신 등록 순으로 최대 300장을 표시합니다.</p></div>
+        <div><h2 className="text-xl font-bold">등록된 명함 <span className="text-indigo-600">{cards.length}</span></h2><p className="mt-1 text-sm text-slate-500">{normalizedQuery ? `검색 결과 ${visibleCards.length}건 · ` : ""}최신 등록 순으로 최대 300장을 표시합니다. 등록 시간은 한국시간입니다.</p>{isAdmin(user) && <p className="mt-1 text-sm text-slate-500">최고관리자 목록에는 중간관리자의 명함도 함께 표시됩니다.</p>}</div>
         <form className="flex min-w-0 gap-2"><input name="q" defaultValue={q} aria-label="명함 검색" placeholder="기관·이름·전화·이메일 검색" className="min-w-0 flex-1 rounded-xl border border-slate-300 px-3 py-2 md:w-72"/><button className="shrink-0 rounded-xl bg-slate-900 px-4 py-2 text-sm font-bold text-white">검색</button>{normalizedQuery && <Link href="/admin/sales/cards" className="shrink-0 rounded-xl border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700">검색 초기화</Link>}</form>
       </div>
 
@@ -119,13 +121,17 @@ export default async function BusinessCardsPage({ searchParams }: {
           </div>
           <div className="p-4">
             <div className="flex items-start justify-between gap-3"><div className="min-w-0"><h3 className="break-words font-bold text-slate-950">{organization?.name || textField(fields, "organization") || "기관명 미확인"}</h3><p className="mt-1 text-sm text-slate-600">{contact?.name || textField(fields, "name") || "담당자 미확인"}{(contact?.title || textField(fields, "title")) ? ` · ${contact?.title || textField(fields, "title")}` : ""}</p></div><span className="shrink-0 text-xs text-slate-400">{displayDate(businessCard.created_at)}</span></div>
+            {organization && <p className="mt-2 text-xs font-semibold text-indigo-700">확인번호 {businessCard.id.slice(0, 8)} · {organization.created_by === user.id ? "내 작업공간" : "다른 계정의 작업공간"}</p>}
             <span className={`mt-3 inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${recorded ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>{recorded ? "상담 기록 완료" : "상담 기록 필요"}</span>
             <dl className="mt-3 grid grid-cols-[62px_minmax(0,1fr)] gap-x-2 gap-y-1 text-sm">{Object.entries(fieldLabels).map(([key, label]) => {
               const value = textField(fields, key);
               return value ? <div key={key} className="col-span-2 grid grid-cols-subgrid"><dt className="text-slate-500">{label}</dt><dd className="break-all text-slate-800">{value}</dd></div> : null;
             })}</dl>
             <CardVisitDialog cardId={businessCard.id} contactId={businessCard.contact_id} organization={organization?.name || textField(fields, "organization") || "기관명 미확인"} contact={contact?.name || textField(fields, "name") || "담당자 미확인"} region={organization?.region ?? ""} today={koreaDateKey(new Date())} recorded={recorded} />
-            {organization && <Link href={`/admin/sales/${organization.id}`} className="mt-3 inline-flex rounded-lg border border-indigo-200 px-3 py-2 text-sm font-bold text-indigo-700">기관 상세 보기</Link>}
+            {organization && <div className="mt-3 flex flex-wrap items-center gap-2">
+              <Link href={`/admin/sales/${organization.id}`} className="inline-flex rounded-lg border border-indigo-200 px-3 py-2 text-sm font-bold text-indigo-700">기관 상세 보기</Link>
+              {organization.created_by === user.id && <DeleteBusinessCardDialog cardId={businessCard.id} organization={organization.name} contact={contact?.name || textField(fields, "name") || "담당자 미확인"} />}
+            </div>}
           </div>
         </article>;
       })}</div>
