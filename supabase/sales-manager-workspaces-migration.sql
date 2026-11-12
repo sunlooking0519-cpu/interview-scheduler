@@ -78,8 +78,10 @@ returns uuid language sql stable security invoker set search_path = '' as $$
   order by created_at, id limit 1;
 $$;
 
+-- INSERT's BEFORE trigger can create the first workspace in the same statement.
+-- STABLE functions use the statement's original snapshot and miss that row.
 create or replace function scheduler.is_sales_workspace_member(p_workspace_id uuid)
-returns boolean language sql stable security definer set search_path = '' as $$
+returns boolean language sql volatile security definer set search_path = '' as $$
   select case
     when (auth.jwt() -> 'app_metadata' ->> 'role') in ('admin', 'super_admin') then true
     when (auth.jwt() -> 'app_metadata' ->> 'role') = 'instructor' then exists (
