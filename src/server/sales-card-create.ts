@@ -46,7 +46,16 @@ export async function saveSalesCard(supabase: SupabaseClient, user: User, input:
       if (retry.error || !retry.data) return { id: "", error: "기관 등록이 겹쳤습니다. 다시 시도해 주세요." };
       savedOrganizationId = retry.data as string;
     } else if (error) {
-      return { id: "", error: "영업 대상을 저장하지 못했습니다. 잠시 후 다시 시도해 주세요." };
+      const incidentId = crypto.randomUUID().slice(0, 8);
+      console.error("sales-card organization insert failed", {
+        incidentId,
+        code: error.code,
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        userId: user.id,
+      });
+      return { id: "", error: `영업 대상을 저장하지 못했습니다. 오류 코드 ${error.code || "unknown"}, 확인번호 ${incidentId}` };
     } else {
       savedOrganizationId = organizationId;
       createdOrganization = true;
