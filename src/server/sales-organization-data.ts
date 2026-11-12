@@ -15,7 +15,7 @@ export type SalesListContact = {
   email: string | null;
 };
 
-export async function loadSalesOrganizationData(supabase: Supabase) {
+export async function loadSalesOrganizationData(supabase: Supabase, ownerUserId?: string) {
   const db = supabase.schema("scheduler");
   const organizations: SalesOrganizationRow[] = [];
   const activities: (DashboardActivity & SalesStatusActivity)[] = [];
@@ -25,9 +25,11 @@ export async function loadSalesOrganizationData(supabase: Supabase) {
 
   let hasWorkspace = true;
   for (let offset = 0; ; offset += 1000) {
-    const result = await db.from("sales_organizations")
-      .select(`id,name,region,created_at,updated_at,next_contact_id${hasWorkspace ? ",workspace_id,stage" : ""}`)
+    let query = db.from("sales_organizations")
+      .select(`id,name,region,created_by,created_at,updated_at,next_contact_id${hasWorkspace ? ",workspace_id,stage" : ""}`)
       .order("updated_at", { ascending: false }).order("id").range(offset, offset + 999);
+    if (ownerUserId) query = query.eq("created_by", ownerUserId);
+    const result = await query;
     if (result.error && hasWorkspace && ["42703", "PGRST204"].includes(result.error.code)) {
       hasWorkspace = false;
       offset = -1000;
@@ -91,5 +93,9 @@ export async function loadSalesOrganizationData(supabase: Supabase) {
     if (batch.length < 1000) break;
   }
 
-  return { rows: buildSalesOrganizationList(organizations, activities, cards), activities, contacts, loadError };
+  const ownerOrganizationIds = ownerUserId ? new Set(organizations.map((item) => item.id)) : null;
+  const scopedActivities = ownerOrganizationIds ? activities.filter((item) => ownerOrganizationIds.has(item.organization_id)) : activities;
+  const scopedContacts = ownerOrganizationIds ? contacts.filter((item) => ownerOrganizationIds.has(item.organization_id)) : contacts;
+  const scopedCards = ownerOrganizationIds ? cards.filter((item) => ownerOrganizationIds.has(item.organization_id)) : cards;
+  return { rows: buildSalesOrganizationList(organizations, scopedActivities, scopedCards), activities: scopedActivities, contacts: scopedContacts, loadError };
 }

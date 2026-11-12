@@ -63,7 +63,7 @@ export default async function SalesPage({ searchParams }: {
   const { q = "", category = "", region = "", contact = "", page = "1", stage = "", view = "visits", sync = "", saved = "" } = await searchParams;
   const db = supabase.schema("scheduler");
   if (view === "visits") {
-    const { rows, activities, contacts, loadError } = await loadSalesOrganizationData(supabase);
+    const { rows, activities, contacts, loadError } = await loadSalesOrganizationData(supabase, user.id);
     const contactsByOrganization: Record<string, { id: string; name: string; email: string | null; phone: string | null; mobile: string | null }[]> = {};
     for (const item of contacts) (contactsByOrganization[item.organization_id] ??= []).push({ id: item.id, name: item.name, email: item.email, phone: item.phone, mobile: item.mobile });
     return <SalesDashboard
@@ -75,6 +75,7 @@ export default async function SalesPage({ searchParams }: {
   }
   const { data, error } = await db.from("sales_organizations")
     .select("id,name,kind,stage,priority,region,address,next_action,next_action_type,next_action_at,next_contact_id,last_contact_at,last_follow_up_round,follow_up_status,updated_at")
+    .eq("created_by", user.id)
     .order("updated_at", { ascending: false }).limit(300);
   const organizations = (data ?? []) as Organization[];
   const ids = organizations.map((organization) => organization.id);

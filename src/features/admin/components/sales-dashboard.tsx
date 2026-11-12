@@ -43,9 +43,9 @@ export function SalesDashboard({ organizations, recentActivities, contactsByOrga
     </header>
     {saved === "visit" && <p role="status" className="rounded-xl bg-emerald-50 p-4 text-sm font-semibold text-emerald-800">상담 기록을 저장했습니다. 기관 목록의 최근 업데이트를 확인해 주세요.</p>}
     {loadError && <p role="alert" className="rounded-xl bg-red-50 p-4 text-sm text-red-700">기관 또는 활동 기록을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.</p>}
-    <section id="organizations" className="scroll-mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white" aria-label="전체 기관 관리 목록">
+    <section id="organizations" className="scroll-mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white" aria-label="내 기관 관리 목록">
       <div className="p-4 sm:p-6">
-        <h2 className="text-xl font-bold">전체 기관 <span className="text-indigo-600">{visible.length}</span><span className="ml-2 text-sm font-normal text-slate-500">/ {organizations.length}개</span></h2>
+        <h2 className="text-xl font-bold">내 기관 <span className="text-indigo-600">{visible.length}</span><span className="ml-2 text-sm font-normal text-slate-500">/ {organizations.length}개</span></h2>
         <p className="mt-1 text-sm text-slate-500">최근 관리 기록 순 · 기관 유형과 지역을 함께 선택해 볼 수 있습니다.</p>
         <div className="mt-4 hidden justify-end xl:flex"><SalesExportDialog filters={{ query, category, region, contact }} count={visible.length} disabled={loadError || visible.length === 0} /></div>
         <SalesOrganizationFilters key={JSON.stringify([query, category, region, contact])} query={query} category={category} region={region} contact={contact} mobileTools={<SalesExportDialog filters={{ query, category, region, contact }} count={visible.length} disabled={loadError || visible.length === 0} />} />

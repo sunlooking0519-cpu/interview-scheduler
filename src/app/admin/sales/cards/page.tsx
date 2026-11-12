@@ -1,6 +1,5 @@
 import Image from "next/image";
 import Link from "next/link";
-import { isAdmin } from "../../../../../lib/supabase/admin-role";
 import { requireSalesStaff } from "@/server/admin-auth";
 import { apkDownloadUrl } from "@/features/admin/business-card-app";
 import { BusinessCardRegistrationLauncher } from "@/features/admin/components/business-card-registration-launcher";
@@ -18,6 +17,7 @@ type BusinessCard = {
   ocr_text: string;
   ocr_fields: Record<string, unknown> | null;
   created_at: string;
+  sales_organizations: Organization;
 };
 
 type Organization = { id: string; name: string; region: string | null; created_by: string };
@@ -51,21 +51,30 @@ export default async function BusinessCardsPage({ searchParams }: {
   const { user, supabase } = await requireSalesStaff();
   const db = supabase.schema("scheduler");
   const cardsResult = await db.from("sales_business_cards")
-    .select("id,organization_id,contact_id,image_path,ocr_text,ocr_fields,created_at")
+    .select("id,organization_id,contact_id,image_path,ocr_text,ocr_fields,created_at,sales_organizations!inner(id,name,region,created_by)")
+    .eq("sales_organizations.created_by", user.id)
     .order("created_at", { ascending: false })
     .limit(300);
-  const cards = (cardsResult.data ?? []) as BusinessCard[];
-  const [organizationsResult, contactsResult, visitsResult, signedResult] = await Promise.all([
-    db.from("sales_organizations").select("id,name,region,created_by").limit(1000),
-    db.from("sales_contacts").select("id,name,title,email,phone,mobile").limit(3000),
-    db.from("sales_activities").select("organization_id,contact_id").eq("activity_type", "visit").limit(3000),
+  const cards: BusinessCard[] = ((cardsResult.data ?? []) as unknown as
+    (Omit<BusinessCard, "sales_organizations"> & { sales_organizations: Organization | Organization[] | null })[])
+    .flatMap((card) => {
+      const organization = Array.isArray(card.sales_organizations) ? card.sales_organizations[0] : card.sales_organizations;
+      return organization ? [{ ...card, sales_organizations: organization }] : [];
+    });
+  const organizationIds = [...new Set(cards.map((card) => card.organization_id))];
+  const [contactsResult, visitsResult, signedResult] = await Promise.all([
+    organizationIds.length
+      ? db.from("sales_contacts").select("id,name,title,email,phone,mobile").in("organization_id", organizationIds).limit(3000)
+      : Promise.resolve({ data: [], error: null }),
+    organizationIds.length
+      ? db.from("sales_activities").select("organization_id,contact_id").in("organization_id", organizationIds).eq("activity_type", "visit").limit(3000)
+      : Promise.resolve({ data: [], error: null }),
     cards.length
       ? supabase.storage.from("sales-cards").createSignedUrls(cards.map((card) => card.image_path), 60 * 10)
       : Promise.resolve({ data: [], error: null }),
   ]);
-  const organizations = (organizationsResult.data ?? []) as Organization[];
   const contacts = (contactsResult.data ?? []) as Contact[];
-  const organizationById = new Map(organizations.map((organization) => [organization.id, organization]));
+  const organizationById = new Map(cards.map((card) => [card.organization_id, card.sales_organizations]));
   const contactById = new Map(contacts.map((contact) => [contact.id, contact]));
   const visits = (visitsResult.data ?? []) as { organization_id: string; contact_id: string | null }[];
   const visitedContacts = new Set(visits.map((visit) => `${visit.organization_id}:${visit.contact_id ?? ""}`));
@@ -88,7 +97,7 @@ export default async function BusinessCardsPage({ searchParams }: {
       ...Object.values(fields ?? {}).filter((value): value is string => typeof value === "string"),
     ].some((value) => value.toLocaleLowerCase("ko-KR").includes(normalizedQuery));
   });
-  const loadError = cardsResult.error || organizationsResult.error || contactsResult.error || visitsResult.error || signedResult.error;
+  const loadError = cardsResult.error || contactsResult.error || visitsResult.error || signedResult.error;
 
   return <div className="space-y-6">
     <header className="rounded-3xl bg-gradient-to-br from-slate-950 via-indigo-950 to-indigo-700 p-6 text-white shadow-lg sm:p-8">
@@ -105,7 +114,7 @@ export default async function BusinessCardsPage({ searchParams }: {
 
     <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
       <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-        <div><h2 className="text-xl font-bold">등록된 명함 <span className="text-indigo-600">{cards.length}</span></h2><p className="mt-1 text-sm text-slate-500">{normalizedQuery ? `검색 결과 ${visibleCards.length}건 · ` : ""}최신 등록 순으로 최대 300장을 표시합니다. 등록 시간은 한국시간입니다.</p>{isAdmin(user) && <p className="mt-1 text-sm text-slate-500">최고관리자 목록에는 중간관리자의 명함도 함께 표시됩니다.</p>}</div>
+        <div><h2 className="text-xl font-bold">내 명함 <span className="text-indigo-600">{cards.length}</span></h2><p className="mt-1 text-sm text-slate-500">{normalizedQuery ? `검색 결과 ${visibleCards.length}건 · ` : ""}내 계정의 명함을 최신 등록 순으로 최대 300장 표시합니다. 등록 시간은 한국시간입니다.</p></div>
         <form className="flex min-w-0 gap-2"><input name="q" defaultValue={q} aria-label="명함 검색" placeholder="기관·이름·전화·이메일 검색" className="min-w-0 flex-1 rounded-xl border border-slate-300 px-3 py-2 md:w-72"/><button className="shrink-0 rounded-xl bg-slate-900 px-4 py-2 text-sm font-bold text-white">검색</button>{normalizedQuery && <Link href="/admin/sales/cards" className="shrink-0 rounded-xl border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700">검색 초기화</Link>}</form>
       </div>
 
@@ -121,7 +130,7 @@ export default async function BusinessCardsPage({ searchParams }: {
           </div>
           <div className="p-4">
             <div className="flex items-start justify-between gap-3"><div className="min-w-0"><h3 className="break-words font-bold text-slate-950">{organization?.name || textField(fields, "organization") || "기관명 미확인"}</h3><p className="mt-1 text-sm text-slate-600">{contact?.name || textField(fields, "name") || "담당자 미확인"}{(contact?.title || textField(fields, "title")) ? ` · ${contact?.title || textField(fields, "title")}` : ""}</p></div><span className="shrink-0 text-xs text-slate-400">{displayDate(businessCard.created_at)}</span></div>
-            {organization && <p className="mt-2 text-xs font-semibold text-indigo-700">확인번호 {businessCard.id.slice(0, 8)} · {organization.created_by === user.id ? "내 작업공간" : "다른 계정의 작업공간"}</p>}
+            {organization && <p className="mt-2 text-xs font-semibold text-indigo-700">확인번호 {businessCard.id.slice(0, 8)} · 내 작업공간</p>}
             <span className={`mt-3 inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${recorded ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>{recorded ? "상담 기록 완료" : "상담 기록 필요"}</span>
             <dl className="mt-3 grid grid-cols-[62px_minmax(0,1fr)] gap-x-2 gap-y-1 text-sm">{Object.entries(fieldLabels).map(([key, label]) => {
               const value = textField(fields, key);

@@ -14,7 +14,7 @@ const allowedCategories = new Set<string>(organizationCategoryOptions.map(([key]
 const allowedRegions = new Set<string>(salesRegionOptions);
 
 export async function POST(request: Request) {
-  const { supabase } = await requireSalesStaff();
+  const { user, supabase } = await requireSalesStaff();
   let input: { columns?: unknown; filters?: unknown };
   try {
     input = await request.json();
@@ -39,7 +39,7 @@ export async function POST(request: Request) {
     return Response.json({ error: "검색 조건을 확인해 주세요." }, { status: 400 });
   }
   const filters = raw as SalesExportFilters;
-  const data = await loadSalesOrganizationData(supabase);
+  const data = await loadSalesOrganizationData(supabase, user.id);
   if (data.loadError) return Response.json({ error: "기관 데이터를 불러오지 못했습니다." }, { status: 503 });
   const rows = buildSalesExportRows(data.rows, data.contacts, filters, columns as SalesExportColumn[]);
   if (!rows.length) return Response.json({ error: "다운로드할 기관이 없습니다." }, { status: 400 });
