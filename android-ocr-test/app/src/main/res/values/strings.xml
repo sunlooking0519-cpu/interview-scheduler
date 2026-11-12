@@ -33,11 +33,13 @@
     <string name="logout_button">로그아웃 · 계정 변경</string>
     <string name="logout_complete">이 기기에서 로그아웃했습니다.</string>
     <string name="save_button">명함 등록</string>
+    <string name="save_account">현재 저장 계정: %1$s · 웹 로그인과 별개입니다. 계정을 바꾸려면 화면 위쪽에서 로그아웃하세요.</string>
+    <string name="save_account_signed_out">현재 저장 계정: 로그인 필요</string>
     <string name="save_ready">명함을 확인한 뒤 등록하세요. 저장 결과가 여기에 표시됩니다.</string>
     <string name="save_uploading">명함 사진을 올리는 중…</string>
     <string name="save_writing">DB에 명함 정보를 저장하는 중…</string>
     <string name="save_verifying">서버 응답이 끊겨 DB 저장 여부를 확인하는 중…</string>
-    <string name="save_confirmed">DB 저장 완료 · 확인번호 %1$s</string>
+    <string name="save_confirmed">DB 저장 완료 · 계정 %1$s · 확인번호 %2$s</string>
     <string name="save_failed">저장 실패 · %1$s</string>
     <string name="save_uncertain">저장 여부를 확인하지 못했습니다. 다시 누르기 전에 웹 명함 목록을 확인해 주세요.</string>
     <string name="web_list_button">웹 명함 목록 보기</string>

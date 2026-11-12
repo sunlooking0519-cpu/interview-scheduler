@@ -58,6 +58,7 @@ public final class MainActivity extends ComponentActivity {
     private TextView latinText;
     private TextView mergedText;
     private TextView saveStatus;
+    private TextView saveAccount;
     private TextView accountStatus;
     private LinearLayout loginPanel;
     private EditText organizationInput;
@@ -83,6 +84,7 @@ public final class MainActivity extends ComponentActivity {
         latinText = findViewById(R.id.latinText);
         mergedText = findViewById(R.id.mergedText);
         saveStatus = findViewById(R.id.saveStatusText);
+        saveAccount = findViewById(R.id.saveAccountText);
         organizationInput = findViewById(R.id.organizationInput);
         nameInput = findViewById(R.id.nameInput);
         titleInput = findViewById(R.id.titleInput);
@@ -279,6 +281,8 @@ public final class MainActivity extends ComponentActivity {
         boolean saved = mobileApi.hasSavedSession();
         accountStatus.setText(loggedIn ? getString(R.string.login_signed_in, mobileApi.accountEmail())
             : getString(saved ? R.string.login_restore_failed : R.string.login_signed_out));
+        saveAccount.setText(loggedIn ? getString(R.string.save_account, mobileApi.accountEmail())
+            : getString(R.string.save_account_signed_out));
         loginPanel.setVisibility(loggedIn ? View.GONE : View.VISIBLE);
         findViewById(R.id.retryAccountButton).setVisibility(!loggedIn && saved ? View.VISIBLE : View.GONE);
         findViewById(R.id.logoutButton).setVisibility(loggedIn ? View.VISIBLE : View.GONE);
@@ -303,7 +307,7 @@ public final class MainActivity extends ComponentActivity {
                     busy = false;
                     if (error.isEmpty()) {
                         showSaveMessage(getString(R.string.save_confirmed,
-                            cardId.length() > 8 ? cardId.substring(0, 8) : cardId), false);
+                            mobileApi.accountEmail(), cardId.length() > 8 ? cardId.substring(0, 8) : cardId), false);
                         scannedImage = null;
                     } else {
                         showSaveMessage(getString(R.string.save_failed, error), true);

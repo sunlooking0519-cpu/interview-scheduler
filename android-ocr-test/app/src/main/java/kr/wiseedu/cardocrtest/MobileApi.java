@@ -190,15 +190,18 @@ final class MobileApi {
     }
 
     private void applySession(JSONObject session) throws Exception {
+        String verifiedEmail = session.optString("email").trim();
         String nextAccess = session.optString("accessToken");
         String nextRefresh = session.optString("refreshToken");
         String nextStorage = session.optString("storageUrl");
         String nextKey = session.optString("anonKey");
         long nextExpiry = session.optLong("expiresAt");
-        if (nextAccess.isEmpty() || nextRefresh.isEmpty() || !nextStorage.startsWith("https://") || nextKey.isEmpty()) {
+        if (verifiedEmail.isEmpty() || nextAccess.isEmpty() || nextRefresh.isEmpty()
+            || !nextStorage.startsWith("https://") || nextKey.isEmpty()) {
             throw new IOException("로그인 응답이 올바르지 않습니다.");
         }
-        sessionStore.save(nextRefresh, accountEmail);
+        sessionStore.save(nextRefresh, verifiedEmail);
+        accountEmail = verifiedEmail;
         accessToken = nextAccess;
         refreshToken = nextRefresh;
         storageUrl = nextStorage;

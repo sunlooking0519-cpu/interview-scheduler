@@ -16,7 +16,7 @@ export async function POST(request: Request) {
   const { client, url, key } = mobileSupabase();
   const { data, error } = await client.auth.signInWithPassword({ email: body.email, password: body.password });
   if (error || !data.user || !data.session || !isSalesStaff(data.user)) return failure("관리자 계정을 확인해 주세요.", 401);
-  return Response.json({ accessToken: data.session.access_token, refreshToken: data.session.refresh_token,
+  return Response.json({ email: data.user.email, accessToken: data.session.access_token, refreshToken: data.session.refresh_token,
     expiresAt: data.session.expires_at, storageUrl: `${url}/storage/v1/object/sales-cards`, anonKey: key }, { headers });
 }
 
@@ -30,7 +30,7 @@ export async function PUT(request: Request) {
   if (error || !data.session) return failure("다시 로그인해 주세요.", 401);
   const verified = await client.auth.getUser(data.session.access_token);
   if (verified.error || !verified.data.user || !isSalesStaff(verified.data.user)) return failure("관리자 계정을 확인해 주세요.", 403);
-  return Response.json({ accessToken: data.session.access_token, refreshToken: data.session.refresh_token,
+  return Response.json({ email: verified.data.user.email, accessToken: data.session.access_token, refreshToken: data.session.refresh_token,
     expiresAt: data.session.expires_at, storageUrl: `${url}/storage/v1/object/sales-cards`, anonKey: key }, { headers });
 }
 
