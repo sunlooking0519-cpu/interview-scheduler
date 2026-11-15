@@ -7,6 +7,7 @@ import { SalesContacts } from "@/features/admin/components/sales-contacts";
 import { ProposalEditor } from "@/features/admin/components/proposal-editor";
 import { OrganizationFollowUpEditor } from "@/features/admin/components/organization-follow-up-dialog";
 import { SalesActivityTimeline } from "@/features/admin/components/sales-activity-timeline";
+import { DeleteSalesOrganizationDialog } from "@/features/admin/components/delete-sales-organization-dialog";
 import { buildSalesOrganizationList } from "@/features/admin/sales-organization-list";
 import { koreaDateKey } from "@/features/admin/sales-follow-up";
 import { followUpStatusLabels, nextActionTypeLabels } from "@/features/admin/sales-follow-up";
@@ -24,7 +25,7 @@ const displayDate = (value: string) => new Intl.DateTimeFormat("ko-KR", { timeZo
 export default async function OrganizationPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
-  const { supabase } = await requireSalesStaff();
+  const { user, supabase } = await requireSalesStaff();
   const db = supabase.schema("scheduler");
   const [{ data: organization, error: organizationError }, contactsResult, meetingsResult, proposalsResult, cardsResult, activitiesResult] = await Promise.all([
     db.from("sales_organizations").select("*").eq("id", id).maybeSingle(),
@@ -49,6 +50,8 @@ export default async function OrganizationPage({ params }: { params: Promise<{ i
   const editingEnabled = !revisionsResult.error && activities.every((activity) => typeof activity.edit_version === "number");
   const versionResults = await Promise.all(proposals.map((proposal) => db.from("sales_proposal_versions").select("id,revision_number,title,created_at").eq("proposal_id", proposal.id).order("revision_number", { ascending: false }).limit(20)));
   const signedCards = await Promise.all(cards.map(async (businessCard) => ({ ...businessCard, url: (await supabase.storage.from("sales-cards").createSignedUrl(businessCard.image_path, 60 * 5)).data?.signedUrl ?? "" })));
+  const canDeleteOrganization = organization.created_by === user.id && !loadError
+    && cards.length === 0 && statusActivities.length === 0 && meetings.length === 0 && proposals.length === 0;
   const nextActionAt = organization.next_action_at ? displayDate(organization.next_action_at) : "날짜 미정";
   const interestTags = Array.isArray(organization.interest_tags) ? organization.interest_tags : [];
   const lastFollowUpRound = Number(organization.last_follow_up_round ?? 0);
@@ -71,6 +74,10 @@ export default async function OrganizationPage({ params }: { params: Promise<{ i
         <div className="min-w-0 rounded-2xl bg-white/10 p-4 lg:w-[360px]"><p className="text-xs font-bold tracking-wide text-indigo-200">NEXT ACTION</p><p className="mt-2 font-bold">{organization.next_action || "다음 행동을 정해 주세요"}</p><p className="mt-1 text-sm text-slate-300">{organization.next_action_type ? `${nextActionTypeLabels[organization.next_action_type]} · ` : ""}{nextActionAt}</p></div>
       </div>
     </header>
+    {canDeleteOrganization && <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
+      <p className="text-sm text-slate-600">명함과 영업 기록이 없는 기관입니다. 잘못 등록한 기관이라면 담당자 기록과 함께 삭제할 수 있습니다.</p>
+      <DeleteSalesOrganizationDialog id={id} name={organization.name} contactCount={contacts.length} />
+    </div>}
     {loadError && <p role="alert" className="rounded-xl bg-red-50 p-4 text-sm text-red-700">일부 정보를 불러오지 못했습니다. 워크플로우 마이그레이션 적용 여부를 확인해 주세요.</p>}
 
     <div className="grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(340px,0.9fr)]">
