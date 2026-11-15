@@ -27,5 +27,6 @@ export async function deleteSalesActivity(_previous: DeleteActivityState, formDa
   if (error) return { deleted: false, error: "활동을 삭제하지 못했습니다. 삭제 SQL 적용 여부를 확인해 주세요." };
   revalidatePath(`/admin/sales/${activity.organization_id}`);
   revalidatePath("/admin/sales");
+  revalidatePath("/admin/sales/cards");
   return { deleted: true, error: "" };
 }

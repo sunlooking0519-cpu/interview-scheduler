@@ -76,7 +76,7 @@ function DeleteActivityDialog({ activity, revisionCount, onClose }: { activity: 
         <h3 className="text-xl font-bold">이 활동을 삭제할까요?</h3>
         <p className="mt-3 text-sm text-slate-700">{activityLabels[activity.activity_type] ?? activity.activity_type} · {displayDate(activity.occurred_at)}</p>
         <p className="mt-2 max-h-32 overflow-y-auto whitespace-pre-wrap break-words rounded-xl bg-slate-50 p-3 text-sm text-slate-700">{activity.summary}</p>
-        <p className="mt-3 text-sm leading-6 text-slate-600">이 활동과 수정 이력 {revisionCount}건이 영구 삭제됩니다. 기관의 최근 접촉일과 후속 차수는 남은 활동을 기준으로 다시 계산됩니다.</p>
+        <p className="mt-3 text-sm leading-6 text-slate-600">이 활동과 수정 이력 {revisionCount}건이 영구 삭제됩니다. 기관의 최근 접촉일과 후속 차수는 남은 활동을 기준으로 다시 계산됩니다. 진행 단계와 다음 행동 설정은 유지됩니다.</p>
         <input type="hidden" name="activity_id" value={activity.id} />
         <input type="hidden" name="edit_version" value={activity.edit_version ?? 0} />
         {state.error && <p role="alert" className="mt-4 rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{state.error}</p>}
