@@ -5,7 +5,7 @@ export type SchoolFilters = {
 export const schoolPageSize = 25;
 export const schoolLevels = ["초등학교", "중학교", "고등학교"] as const;
 export const schoolProvinces = ["광주광역시", "전라남도", "전북특별자치도"] as const;
-export const schoolUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export const schoolUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function cleanSchoolFilters(input: Partial<SchoolFilters>): SchoolFilters {
   return {
