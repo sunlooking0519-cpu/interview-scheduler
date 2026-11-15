@@ -92,9 +92,18 @@ export default async function MembersPage({ searchParams }: { searchParams: Prom
     .order("interview_date", { ascending: false }).order("interview_time", { ascending: false }).limit(1000);
   const workspacesTask = supabase.schema("scheduler").from("sales_workspaces").select("id,owner_user_id").limit(1000);
   const salesTask = loadSalesOrganizationData(supabase);
-  const schoolsTask = supabase.schema("scheduler").from("schools")
-    .select("id,assigned_to,name,province,district,level,phone,contact_name,proposal_status,reaction,contact_date,management_updated_on")
-    .not("assigned_to", "is", null).order("name").limit(2000);
+  const schoolsTask = (async () => {
+    const schools: ManagedSchool[] = [];
+    for (let offset = 0; offset < 5000; offset += 1000) {
+      const { data, error } = await supabase.schema("scheduler").from("schools")
+        .select("id,assigned_to,name,province,district,level,phone,contact_name,proposal_status,reaction,contact_date,management_updated_on")
+        .not("assigned_to", "is", null).order("id").range(offset, offset + 999);
+      if (error) return { data: [] as ManagedSchool[], error };
+      schools.push(...((data ?? []) as ManagedSchool[]));
+      if ((data ?? []).length < 1000) break;
+    }
+    return { data: schools.sort((a, b) => a.name.localeCompare(b.name, "ko")), error: null };
+  })();
   const [{ accounts, error: accountError }, { data: hires, error: hiresError }, { data: managerInterviews, error: managerInterviewsError }, workspaces, salesData, schoolsResult] = await Promise.all([
     accountTask, hiresTask, managerInterviewsTask, workspacesTask, salesTask, schoolsTask,
   ]);
