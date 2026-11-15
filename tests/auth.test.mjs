@@ -342,6 +342,70 @@ test("manager sales export includes only the chosen manager's organizations and 
   assert.equal(invalid.status, 400);
 });
 
+test("manager school export keeps selected columns and includes only assigned schools' active history", async () => {
+  const ExcelJS = (await import("exceljs")).default;
+  const labels = load("src/features/admin/school-contact-labels.ts", {});
+  const schoolExport = load("src/features/admin/school-export.ts", { "./school-contact-labels": labels });
+  const { createSchoolExportWorkbook } = load("src/server/school-export-workbook.ts", {
+    "server-only": {}, "exceljs": { default: ExcelJS, __esModule: true },
+    "@/features/admin/school-export": { ...schoolExport,
+      buildSchoolActivityRows: (...args) => schoolExport.buildSchoolActivityRows(...args).map((row) => Array.from(row)),
+    },
+  });
+  const managerId = "22222222-2222-4222-8222-222222222222";
+  const schoolId = "33333333-3333-4333-8333-333333333333";
+  const schools = [{ id: schoolId, name: "장성고등학교", province: "전라남도", district: "장성군", level: "고등학교",
+    phone: "061-123-4567", contact_name: "김선생", contact_phone: "010-1234-5678", contact_email: "school@example.com",
+    contact_date: "2026-11-10", management_updated_on: "2026-11-12", contact_method: "call",
+    proposal_status: "submitted", reaction: "interested", notes: "상담 내용", source_loaded_on: null, assigned_at: null }];
+  const activities = [{ id: "a", school_id: schoolId, contact_date: "2026-11-10", update_date: "2026-11-12",
+    contact_name: "김선생", contact_phone: "010-1234-5678", contact_email: "school@example.com",
+    contact_method: "call", proposal_status: "submitted", reaction: "interested", new_note: "상담 내용",
+    created_at: "2026-11-12T03:00:00Z", edited_at: null }];
+  const workbookBuffer = await createSchoolExportWorkbook(["name", "contactPhone", "contactDate", "activityCount"], schools, activities, true);
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(workbookBuffer);
+  assert.equal(workbook.getWorksheet("학교 목록").getCell("B1").value, "담당자 전화번호");
+  assert.equal(workbook.getWorksheet("학교 목록").getCell("B2").value, "010-1234-5678");
+  assert.equal(workbook.getWorksheet("학교 목록").getCell("C2").numFmt, "yyyy-mm-dd");
+  assert.equal(workbook.getWorksheet("학교 목록").getCell("D2").value, 1);
+  assert.equal(workbook.getWorksheet("활동 기록").getCell("K2").value, "상담 내용");
+  const withoutHistory = new ExcelJS.Workbook();
+  await withoutHistory.xlsx.load(await createSchoolExportWorkbook(["name"], schools, [], false));
+  assert.equal(withoutHistory.getWorksheet("활동 기록"), undefined);
+
+  const seen = [];
+  let exportArgs;
+  const route = load("src/app/admin/members/school-export/route.ts", {
+    "@/server/admin-auth": { requireAdmin: async () => ({ supabase: { schema: () => ({ from(table) {
+      if (table === "schools") return { select: () => ({ eq(key, value) {
+        seen.push([key, value]);
+        return { order: () => ({ range: async () => ({ data: schools, error: null }) }) };
+      } }) };
+      if (table === "school_contact_history") return { select: () => ({ in(key, values) {
+        seen.push([key, values]);
+        return { is: () => ({ order: () => ({ order: () => ({ range: async () => ({ data: activities, error: null }) }) }) }) };
+      } }) };
+      throw new Error("Unexpected table");
+    } }) } }) },
+    "../../../../../lib/supabase/service": { createServiceClient: () => ({ auth: { admin: { getUserById: async () => ({ data: { user: { app_metadata: { role: "instructor" } } }, error: null }) } } }) },
+    "@/features/admin/school-export": schoolExport,
+    "@/server/school-export-workbook": { createSchoolExportWorkbook: async (...args) => { exportArgs = args; return Buffer.from("xlsx"); } },
+    "@/features/admin/sales-follow-up": { koreaDateKey: () => "2026-11-15" },
+  });
+  const response = await route.POST(new Request("https://example.com/admin/members/school-export", {
+    method: "POST", body: JSON.stringify({ managerId, columns: ["name", "contactPhone"], includeHistory: true }),
+  }));
+  assert.equal(response.status, 200);
+  assert.deepEqual(JSON.parse(JSON.stringify(seen)), [["assigned_to", managerId], ["school_id", [schoolId]]]);
+  assert.equal(exportArgs[1].length, 1);
+  assert.equal(exportArgs[2].length, 1);
+  const invalid = await route.POST(new Request("https://example.com/admin/members/school-export", {
+    method: "POST", body: JSON.stringify({ managerId, columns: ["name", "name"], includeHistory: true }),
+  }));
+  assert.equal(invalid.status, 400);
+});
+
 test("dashboard counts only reservations whose interview time has not passed in Korea", () => {
   const { getUpcomingReservationStats } = load("src/features/admin/reservation-stats.ts", {});
   const now = new Date("2026-10-18T10:00:00+09:00");
