@@ -1540,6 +1540,21 @@ test("instructor signup creates a linked account without granting an app role or
     assert.equal(Object.hasOwn(payload.app_metadata, "role"), false);
 });
 
+test("school activity overview attributes records to the actual writer and sorts by save time", () => {
+  const { groupSchoolActivitiesByRecorder } = load("src/features/admin/school-activity-model.ts", {});
+  const school = { id: "school-1", name: "가 학교", province: "전라남도", district: "장성군" };
+  const base = { school_id: school.id, contact_date: "2026-11-10", contact_method: "call", proposal_status: null, reaction: null, new_note: null, change_summary: "반응 변경" };
+  const grouped = groupSchoolActivitiesByRecorder([school], [
+    { ...base, id: "manager-old", recorded_by: "manager", created_at: "2026-11-15T01:00:00Z" },
+    { ...base, id: "admin-note", recorded_by: "admin", created_at: "2026-11-15T02:00:00Z" },
+    { ...base, id: "manager-new", recorded_by: "manager", created_at: "2026-11-15T03:00:00Z", new_note: "자료 재발송" },
+  ]);
+  assert.deepEqual(Array.from(grouped.get("manager"), (item) => item.id), ["manager-new", "manager-old"]);
+  assert.deepEqual(Array.from(grouped.get("admin"), (item) => item.id), ["admin-note"]);
+  assert.equal(grouped.get("manager")[0].schoolName, "가 학교");
+  assert.equal(grouped.get("manager")[0].newNote, "자료 재발송");
+});
+
 test("instructor hierarchy attributes hires to managers and preserves former recruiters", () => {
   const { buildInstructorHierarchy } = load("src/features/admin/instructor-hierarchy.ts", {});
   const accounts = [

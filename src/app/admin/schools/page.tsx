@@ -56,7 +56,6 @@ export default async function SchoolsPage({ searchParams }: {
   const total = rowsResult.count ?? 0;
   const pageCount = Math.max(1, Math.ceil(total / schoolPageSize));
   const assigneeById = new Map(assigneeResult.allAccounts.map((person) => [person.id, person]));
-  if (!admin) assigneeById.set(user.id, { id: user.id, name: "내 담당", email: user.email ?? "" });
   const rows = (rowsResult.data ?? []) as SchoolRow[];
   const historyResult = rows.length ? await db.from("school_contact_history")
     .select("id,school_id,contact_date,update_date,contact_method,proposal_status,reaction,new_note,change_summary,created_at")
@@ -69,7 +68,7 @@ export default async function SchoolsPage({ searchParams }: {
     <header className="rounded-3xl bg-gradient-to-br from-slate-950 via-indigo-950 to-indigo-800 p-6 text-white shadow-lg sm:p-8">
       <p className="text-xs font-bold tracking-[0.2em] text-indigo-200">SCHOOL DIRECTORY</p>
       <h1 className="mt-3 text-3xl font-bold sm:text-4xl">학교 관리</h1>
-      <p className="mt-3 text-sm leading-6 text-indigo-100">{admin ? "학교를 지역·학교급으로 찾고 담당 관리자에게 배정하세요." : "내게 배정된 학교와 대표 연락처를 확인하세요."}</p>
+      <p className="mt-3 text-sm leading-6 text-indigo-100">{admin ? "학교를 지역·학교급으로 찾고 담당 관리자에게 배정하세요." : "내게 배정된 학교의 담당자와 접촉 기록을 확인하고 후속관리를 남기세요."}</p>
     </header>
     {(rowsResult.error || optionsResult.error || historyResult.error) && <p role="alert" className="rounded-xl bg-rose-50 p-4 text-sm text-rose-800">학교 목록 또는 후속관리 기록을 불러오지 못했습니다. 학교 후속관리 SQL 적용 여부를 확인해 주세요.</p>}
     {assigneeResult.error && <p role="alert" className="rounded-xl bg-amber-50 p-4 text-sm text-amber-900">{assigneeResult.error}</p>}

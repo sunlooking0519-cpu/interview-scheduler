@@ -4,6 +4,7 @@ import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { saveSchoolFollowUp, type SchoolFollowUpInput } from "@/app/admin/schools/follow-up-action";
 import type { SchoolRow } from "./school-table";
+import { methodLabels, proposalLabels, reactionLabels } from "../school-contact-labels";
 
 export type SchoolHistory = {
   id: string; school_id: string; contact_date: string; update_date: string;
@@ -11,9 +12,6 @@ export type SchoolHistory = {
   new_note: string | null; change_summary: string; created_at: string;
 };
 
-export const proposalLabels: Record<string, string> = { not_submitted: "미제출", planned: "제출 예정", submitted: "제출 완료" };
-export const reactionLabels: Record<string, string> = { neutral: "보통", interested: "관심 높음", reviewing: "검토 중", waiting: "시기 대기", no_budget: "예산 없음", not_interested: "관심 없음", no_response: "응답 없음" };
-export const methodLabels: Record<string, string> = { visit: "방문", call: "전화", email: "이메일", referral: "지인 소개" };
 const inputClass = "mt-1 w-full min-w-0 rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm";
 
 export function SchoolFollowUpDialog({ school, history, today }: { school: SchoolRow; history: SchoolHistory[]; today: string }) {
