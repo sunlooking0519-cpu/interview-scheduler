@@ -1208,6 +1208,19 @@ test("Google calendar actions verify administrator access before private reads",
   await assert.rejects(() => actions.disconnectGoogleCalendar(), /DENIED/);
 });
 
+test("Google retry reports when no eligible reservation is queued", async () => {
+  const actions = load("src/app/admin/calendar-actions.ts", {
+    "@/server/admin-auth": { requireAdmin: async () => ({ user: admin }) },
+    "@/server/google-calendar": {},
+    "@/server/calendar-sync": { syncCalendarQueue: async () => ({ processed: 0, failed: 0 }) },
+    "../../../lib/supabase/service": {}, "next/cache": {},
+  });
+  const result = await actions.retryCalendarSync();
+  assert.equal(result.error, "");
+  assert.match(result.message, /대기열에 없습니다/);
+  assert.match(result.message, /중간관리자 전용 예약/);
+});
+
 test("admin November calendar reads events from primary and another Google calendar", async () => {
   const queried = [];
   const actions = load("src/app/admin/calendar-actions.ts", {

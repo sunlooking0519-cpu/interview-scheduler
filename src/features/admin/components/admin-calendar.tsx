@@ -42,7 +42,7 @@ export function AdminCalendar({ selected, disabled, interviews, onSelect, showGo
     setPending(true); setMessage("");
     try {
       const result = await retryCalendarSync();
-      setMessage(result.error || "앱에서 만든 예약의 Google 동기화를 다시 시도했습니다.");
+      setMessage(result.error || result.message);
       setRevision((value) => value + 1);
     } catch { setMessage("동기화를 처리하지 못했습니다."); }
     finally { setPending(false); }
@@ -63,7 +63,7 @@ export function AdminCalendar({ selected, disabled, interviews, onSelect, showGo
       <div className="flex flex-wrap gap-2 text-xs">
         {showGoogle && <button type="button" disabled={pending || loading} onClick={() => { setLoadedMonth(""); setRevision((value) => value + 1); }} className="min-h-11 rounded-lg border px-3">일정 새로고침</button>}
         {showGoogle && data?.canConnect && <a href="/admin/google/connect" className="inline-flex min-h-11 items-center rounded-lg border px-3 text-indigo-600">{data.connected ? "Google 다시 연결" : "Google 캘린더 연결"}</a>}
-        {showGoogle && data?.connected && <button type="button" disabled={pending} onClick={() => void sync()} className="min-h-11 rounded-lg border px-3">{pending ? "처리 중..." : "예약→Google 재시도"}</button>}
+        {showGoogle && data?.connected && <button type="button" disabled={pending} onClick={() => void sync()} className="min-h-11 rounded-lg border px-3">{pending ? "처리 중..." : "공용 예약→Google 재시도"}</button>}
         {showGoogle && data?.canDisconnect && <button type="button" disabled={pending} onClick={() => void disconnect()} className="min-h-11 rounded-lg border px-3 text-slate-500">연결 해제</button>}
       </div>
     </div>
@@ -89,9 +89,9 @@ export function AdminCalendar({ selected, disabled, interviews, onSelect, showGo
     {selected.startsWith(`${month}-`) && <div className="mt-4 space-y-2 border-t pt-4">
       <h4 className="text-sm font-bold">{selected} 일정</h4>
       {googleOn(selected).map((event) => <p key={event.id} className="rounded-xl bg-blue-50 p-3 text-sm text-blue-800">{event.allDay ? "종일" : event.start.slice(11, 16)} · {event.title} <span className="text-xs text-blue-600">({event.calendar})</span></p>)}
-      {localOn(selected).map((row) => <p key={row.id} className="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800">{row.interview_time} · {row.name} · 면접 확정</p>)}
+      {localOn(selected).map((row) => <p key={row.id} className="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800">{row.interview_time} · {row.name} · 면접 확정{showGoogle ? row.owner_id ? " · 중간관리자 전용 (이 Google 계정으로 전송 안 함)" : " · 공용 예약 (Google 전송 대상)" : ""}</p>)}
       {googleOn(selected).length === 0 && localOn(selected).length === 0 && <p className="text-sm text-slate-500">표시할 일정이 없습니다.</p>}
     </div>}
-    <p className="mt-4 text-xs leading-5 text-slate-500">{showGoogle ? "Google 일정은 참고용입니다. 예약 시간은 자동으로 열리지 않으며, 아래에서 직접 연 시간만 지원자가 예약할 수 있습니다." : "아래에서 직접 연 시간만 지원자가 예약할 수 있습니다."}</p>
+    <p className="mt-4 text-xs leading-5 text-slate-500">{showGoogle ? "공용 면접 예약만 연결된 Google 캘린더로 전송됩니다. Google 일정은 참고용이며, 예약 시간은 아래에서 직접 연 시간만 지원자가 선택할 수 있습니다." : "아래에서 직접 연 시간만 지원자가 예약할 수 있습니다."}</p>
   </div>;
 }

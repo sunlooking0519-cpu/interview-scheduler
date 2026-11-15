@@ -80,12 +80,14 @@ export async function getGoogleCalendarMonth(month: string): Promise<CalendarMon
   } catch { return { ...empty, error: "Google 연결 설정이 필요하거나 연결이 만료되었습니다. 설정을 확인한 뒤 다시 연결해 주세요.", canConnect: !!process.env.GOOGLE_CLIENT_ID }; }
 }
 
-export async function retryCalendarSync(): Promise<{ error: string }> {
+export async function retryCalendarSync(): Promise<{ message: string; error: string }> {
   await requireAdmin();
   try {
     const result = await syncCalendarQueue();
-    return { error: result.failed ? "일부 예약의 동기화가 실패했습니다. 잠시 후 재시도해 주세요." : "" };
-  } catch { return { error: "Google 연결 설정을 확인해 주세요." }; }
+    if (result.failed) return { message: "", error: `동기화 ${result.processed}건 완료, ${result.failed}건 실패했습니다. 연결 상태를 확인한 뒤 재시도해 주세요.` };
+    if (!result.processed) return { message: "현재 처리할 예약이 Google 전송 대기열에 없습니다. 중간관리자 전용 예약은 이 계정으로 전송되지 않습니다.", error: "" };
+    return { message: `Google 동기화 ${result.processed}건을 완료했습니다.`, error: "" };
+  } catch { return { message: "", error: "Google 연결 설정을 확인해 주세요." }; }
 }
 
 export async function disconnectGoogleCalendar(): Promise<{ error: string }> {
