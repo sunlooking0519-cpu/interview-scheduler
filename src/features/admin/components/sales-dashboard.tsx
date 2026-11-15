@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { DashboardActivity } from "../sales-dashboard-model";
 import { filterSalesOrganizationList, paginateSalesOrganizations, salesOrganizationPageSize, type SalesOrganizationListRow } from "../sales-organization-list";
 import { OrganizationFollowUpDialog } from "./organization-follow-up-dialog";
+import { DeleteSalesOrganizationDialog } from "./delete-sales-organization-dialog";
 import { SalesExportDialog } from "./sales-export-dialog";
 import { SalesOrganizationFilters } from "./sales-organization-filters";
 
@@ -72,15 +73,15 @@ export function SalesDashboard({ organizations, recentActivities, contactsByOrga
               <Link href={`/admin/sales/${item.id}`} className="inline-flex min-h-11 items-center font-semibold text-indigo-700 underline">기관 상세 보기</Link>
             </div>
           </details>
-          <div className="mt-3"><OrganizationFollowUpDialog organization={item} today={today} contacts={contacts} /></div>
+          <div className="mt-3 flex flex-wrap items-center gap-2"><OrganizationFollowUpDialog organization={item} today={today} contacts={contacts} /><DeleteSalesOrganizationDialog id={item.id} name={item.name} /></div>
         </article>;
       })}</div>
-      <div className="hidden grid-cols-[minmax(0,1.7fr)_95px_105px_95px_85px_minmax(0,1fr)_minmax(0,1.5fr)_86px] gap-3 border-y bg-slate-50 px-6 py-3 text-xs font-bold text-slate-600 xl:grid"><span>기관명</span><span>방문일</span><span>최근 업데이트</span><span>제안서 제출</span><span>반응</span><span>담당자</span><span>이메일</span><span className="text-right">관리</span></div>
+      <div className="hidden grid-cols-[minmax(0,1.7fr)_95px_105px_95px_85px_minmax(0,1fr)_minmax(0,1.5fr)_150px] gap-3 border-y bg-slate-50 px-6 py-3 text-xs font-bold text-slate-600 xl:grid"><span>기관명</span><span>방문일</span><span>최근 업데이트</span><span>제안서 제출</span><span>반응</span><span>담당자</span><span>이메일</span><span className="text-right">관리</span></div>
       <div className="hidden divide-y divide-slate-100 xl:block">{pageRows.map((item) => {
         const contacts = contactsByOrganization[item.id] ?? [];
         const preferred = contacts.find((person) => person.id === item.next_contact_id);
         const displayedContacts = preferred ? [preferred] : contacts;
-        return <article key={item.id} className="grid min-w-0 gap-3 px-4 py-4 hover:bg-slate-50 sm:px-6 xl:grid-cols-[minmax(0,1.7fr)_95px_105px_95px_85px_minmax(0,1fr)_minmax(0,1.5fr)_86px] xl:items-center xl:gap-3">
+        return <article key={item.id} className="grid min-w-0 gap-3 px-4 py-4 hover:bg-slate-50 sm:px-6 xl:grid-cols-[minmax(0,1.7fr)_95px_105px_95px_85px_minmax(0,1fr)_minmax(0,1.5fr)_150px] xl:items-center xl:gap-3">
         <Link href={`/admin/sales/${item.id}`} className="break-words font-bold text-slate-950 hover:text-indigo-700">{item.name}</Link>
         <div><span className="text-xs text-slate-500 xl:hidden">방문일 · </span>{item.visitDate ? <time dateTime={item.visitDate} className="text-sm text-slate-700">{item.visitDate}</time> : <span className="text-sm text-slate-400">미기록</span>}</div>
         <div><span className="text-xs text-slate-500 xl:hidden">최근 업데이트 · </span><time dateTime={item.lastUpdatedAt} className="text-sm text-slate-700">{dateFormatter.format(new Date(item.lastUpdatedAt))}</time></div>
@@ -88,7 +89,7 @@ export function SalesDashboard({ organizations, recentActivities, contactsByOrga
         <div><span className="text-xs text-slate-500 xl:hidden">반응 · </span><span className="text-sm text-slate-700">{item.reaction ? reactionLabels[item.reaction] ?? item.reaction : "미기록"}</span></div>
         <div className="min-w-0 break-words"><span className="text-xs text-slate-500 xl:hidden">담당자 · </span>{displayedContacts.length ? <span className="text-sm text-slate-700">{displayedContacts.map((person) => person.name).join(", ")}</span> : <span className="text-sm text-slate-400">미등록</span>}</div>
         <div className="min-w-0"><span className="text-xs text-slate-500 xl:hidden">이메일 · </span>{displayedContacts.some((person) => person.email) ? <div className="inline-flex min-w-0 flex-col gap-1 align-top">{displayedContacts.filter((person) => person.email).map((person, index) => <a key={`${person.email}-${index}`} href={`mailto:${person.email}`} className="break-all text-sm text-indigo-700 hover:underline">{person.email}</a>)}</div> : <span className="text-sm text-slate-400">미등록</span>}</div>
-        <div className="xl:text-right"><OrganizationFollowUpDialog organization={item} today={today} contacts={contacts} /></div>
+        <div className="flex items-center justify-end gap-2"><OrganizationFollowUpDialog organization={item} today={today} contacts={contacts} /><DeleteSalesOrganizationDialog id={item.id} name={item.name} /></div>
       </article>; })}</div>
       {!loadError && !visible.length && <p className="p-8 text-center text-sm text-slate-500">{hasFilters ? "조건에 맞는 기관이 없습니다. 필터를 바꿔보세요." : "등록된 기관이 없습니다. 명함을 등록하면 여기에 표시됩니다."}</p>}
       {visible.length > 0 && <nav aria-label="기관 목록 페이지" className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-4 py-4 sm:px-6">

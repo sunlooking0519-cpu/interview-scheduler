@@ -3,36 +3,71 @@
 import { revalidatePath } from "next/cache";
 import { requireSalesStaff } from "@/server/admin-auth";
 
-type DeleteOrganizationState = { deleted: boolean; error: string };
+export type OrganizationDeletionCounts = {
+  contacts: number; cards: number; activities: number; meetings: number;
+  proposals: number; revisions: number; proposal_versions: number;
+};
+export type OrganizationDeletionPreview = {
+  name: string; counts: OrganizationDeletionCounts;
+  contacts: string[]; cards: string[]; activities: string[]; meetings: string[]; proposals: string[];
+};
+type DeleteOrganizationState = { deleted: boolean; error: string; photoWarning: string };
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const countKeys = ["contacts", "cards", "activities", "meetings", "proposals", "revisions", "proposal_versions"] as const;
 
-export async function deleteEmptySalesOrganization(
+export async function getSalesOrganizationDeletionPreview(id: string): Promise<{ preview: OrganizationDeletionPreview | null; error: string }> {
+  if (!uuid.test(id)) return { preview: null, error: "기관을 확인해 주세요." };
+  const { user, supabase } = await requireSalesStaff();
+  const db = supabase.schema("scheduler");
+  const { data: owner, error: ownerError } = await db.from("sales_organizations")
+    .select("created_by").eq("id", id).maybeSingle();
+  if (ownerError || !owner) return { preview: null, error: "기관을 찾지 못했습니다." };
+  if (owner.created_by !== user.id) return { preview: null, error: "본인 소유 기관만 삭제할 수 있습니다." };
+  const { data, error } = await db.rpc("preview_sales_organization_deletion", { p_organization_id: id });
+  if (error || !data) return { preview: null, error: "삭제 영향을 불러오지 못했습니다. 삭제 SQL 적용 여부를 확인해 주세요." };
+  return { preview: data as OrganizationDeletionPreview, error: "" };
+}
+
+export async function deleteSalesOrganization(
   _previous: DeleteOrganizationState,
   formData: FormData,
 ): Promise<DeleteOrganizationState> {
+  const failure = (error: string): DeleteOrganizationState => ({ deleted: false, error, photoWarning: "" });
   const id = String(formData.get("organization_id") ?? "");
   const confirmedName = String(formData.get("organization_name") ?? "").trim();
-  if (!uuid.test(id)) return { deleted: false, error: "삭제할 기관을 확인해 주세요." };
+  if (!uuid.test(id) || !confirmedName) return failure("기관명을 정확히 입력해 주세요.");
+  let expectedCounts: OrganizationDeletionCounts;
+  try {
+    const parsed = JSON.parse(String(formData.get("expected_counts") ?? "")) as OrganizationDeletionCounts;
+    if (countKeys.some((key) => !Number.isSafeInteger(parsed[key]) || parsed[key] < 0)) throw new Error("Invalid counts");
+    expectedCounts = Object.fromEntries(countKeys.map((key) => [key, parsed[key]])) as OrganizationDeletionCounts;
+  } catch { return failure("삭제 영향을 다시 확인해 주세요."); }
 
   const { user, supabase } = await requireSalesStaff();
   const db = supabase.schema("scheduler");
-  const { data: organization, error: loadError } = await db.from("sales_organizations")
-    .select("id,name,created_by").eq("id", id).maybeSingle();
-  if (loadError || !organization) return { deleted: false, error: "기관을 찾지 못했습니다. 화면을 새로고침해 주세요." };
-  if (organization.created_by !== user.id) return { deleted: false, error: "본인 소유 기관만 삭제할 수 있습니다." };
-  if (confirmedName !== organization.name) return { deleted: false, error: "기관명을 정확히 입력해 주세요." };
+  const { data: organization, error: ownerError } = await db.from("sales_organizations")
+    .select("name,created_by").eq("id", id).maybeSingle();
+  if (ownerError || !organization) return failure("기관을 찾지 못했습니다. 목록을 새로고침해 주세요.");
+  if (organization.created_by !== user.id) return failure("본인 소유 기관만 삭제할 수 있습니다.");
+  if (organization.name !== confirmedName) return failure("기관명을 정확히 입력해 주세요.");
+  if (expectedCounts.meetings > 0) return failure("연결된 미팅이 있습니다. Google 일정이 남지 않도록 미팅을 먼저 정리해 주세요.");
 
-  const relatedTables = ["sales_business_cards", "sales_activities", "sales_meetings", "sales_proposals"] as const;
-  for (const table of relatedTables) {
-    const { count, error } = await db.from(table).select("id", { count: "exact", head: true }).eq("organization_id", id);
-    if (error) return { deleted: false, error: "연결된 기록을 확인하지 못했습니다. 다시 시도해 주세요." };
-    if (count) return { deleted: false, error: "명함·활동·미팅·제안서 기록이 있는 기관은 삭제할 수 없습니다." };
+  const { data, error } = await db.rpc("delete_sales_organization", {
+    p_organization_id: id, p_confirmed_name: confirmedName, p_expected_counts: expectedCounts,
+  });
+  if (error?.code === "40001") return failure("삭제 영향을 확인한 뒤 기록이 변경됐습니다. 창을 닫고 다시 확인해 주세요.");
+  if (error?.code === "23503") return failure("연결된 미팅을 먼저 정리해 주세요.");
+  if (error) return failure("기관을 삭제하지 못했습니다. 삭제 SQL 적용 여부와 연결 상태를 확인해 주세요.");
+
+  const imagePaths = Array.isArray(data) ? data.filter((path): path is string => typeof path === "string") : [];
+  const failedPaths: string[] = [];
+  for (let offset = 0; offset < imagePaths.length; offset += 100) {
+    const paths = imagePaths.slice(offset, offset + 100);
+    const removed = await supabase.storage.from("sales-cards").remove(paths);
+    if (removed.error) failedPaths.push(...paths);
   }
-
-  const { data: deleted, error } = await db.from("sales_organizations")
-    .delete().eq("id", id).eq("created_by", user.id).select("id").maybeSingle();
-  if (error || !deleted) return { deleted: false, error: "기관 삭제에 실패했습니다. 다시 시도해 주세요." };
-
+  if (failedPaths.length) console.error("sales organization image cleanup failed", { organizationId: id, paths: failedPaths });
   revalidatePath("/admin/sales");
-  return { deleted: true, error: "" };
+  revalidatePath("/admin/sales/cards");
+  return { deleted: true, error: "", photoWarning: failedPaths.length ? `기관 기록은 삭제됐지만 명함 사진 ${failedPaths.length}장의 Storage 정리에 실패했습니다. 관리자에게 확인을 요청해 주세요.` : "" };
 }

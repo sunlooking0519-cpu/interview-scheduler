@@ -3,6 +3,7 @@
 import { useActionState, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { editSalesActivity } from "@/app/admin/sales/actions";
+import { deleteSalesActivity } from "@/app/admin/sales/delete-activity";
 import { visibleSalesActivities } from "@/features/admin/sales-contact-state";
 
 type Activity = {
@@ -65,11 +66,31 @@ function EditDialog({ activity, contacts, onClose }: { activity: Activity; conta
   </dialog>;
 }
 
-export function SalesActivityTimeline({ activities, contacts, revisions, editingEnabled }: {
-  activities: Activity[]; contacts: Contact[]; revisions: Revision[]; editingEnabled: boolean;
+function DeleteActivityDialog({ activity, revisionCount, onClose }: { activity: Activity; revisionCount: number; onClose: () => void }) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  const [state, action, pending] = useActionState(deleteSalesActivity, { deleted: false, error: "" });
+  useEffect(() => { if (dialog.current && !dialog.current.open) dialog.current.showModal(); }, []);
+  return <dialog ref={dialog} onClose={onClose} className="m-auto w-[min(92vw,520px)] rounded-2xl border border-slate-200 bg-white p-0 shadow-2xl backdrop:bg-slate-950/60">
+    {state.deleted ? <div className="p-5"><p role="status" className="rounded-xl bg-emerald-50 p-4 text-sm font-semibold text-emerald-800">활동 기록을 삭제했습니다.</p><button type="button" onClick={() => dialog.current?.close()} className="mt-4 rounded-xl bg-slate-900 px-5 py-3 text-sm font-bold text-white">타임라인으로</button></div>
+      : <form action={action} className="p-5">
+        <h3 className="text-xl font-bold">이 활동을 삭제할까요?</h3>
+        <p className="mt-3 text-sm text-slate-700">{activityLabels[activity.activity_type] ?? activity.activity_type} · {displayDate(activity.occurred_at)}</p>
+        <p className="mt-2 max-h-32 overflow-y-auto whitespace-pre-wrap break-words rounded-xl bg-slate-50 p-3 text-sm text-slate-700">{activity.summary}</p>
+        <p className="mt-3 text-sm leading-6 text-slate-600">이 활동과 수정 이력 {revisionCount}건이 영구 삭제됩니다. 기관의 최근 접촉일과 후속 차수는 남은 활동을 기준으로 다시 계산됩니다.</p>
+        <input type="hidden" name="activity_id" value={activity.id} />
+        <input type="hidden" name="edit_version" value={activity.edit_version ?? 0} />
+        {state.error && <p role="alert" className="mt-4 rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{state.error}</p>}
+        <div className="mt-5 flex justify-end gap-2"><button type="button" onClick={() => dialog.current?.close()} className="rounded-xl border border-slate-300 px-4 py-3 text-sm font-semibold">취소</button><button type="submit" disabled={pending} className="rounded-xl bg-rose-700 px-5 py-3 text-sm font-bold text-white disabled:opacity-50">{pending ? "삭제 중…" : "활동 영구 삭제"}</button></div>
+      </form>}
+  </dialog>;
+}
+
+export function SalesActivityTimeline({ activities, contacts, revisions, editingEnabled, canDelete }: {
+  activities: Activity[]; contacts: Contact[]; revisions: Revision[]; editingEnabled: boolean; canDelete: boolean;
 }) {
   const router = useRouter();
   const [selected, setSelected] = useState<Activity | null>(null);
+  const [deleting, setDeleting] = useState<Activity | null>(null);
   const visibleActivities = visibleSalesActivities(activities);
   const contactNames = new Map(contacts.map((person) => [person.id, person.name]));
   const previousVisitById = new Map<string, Activity>();
@@ -105,7 +126,7 @@ export function SalesActivityTimeline({ activities, contacts, revisions, editing
         <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-800">{activity.summary}</p>
         {changes.length > 0 && <p className="mt-1 text-xs font-semibold text-indigo-700">{changes.join(" · ")}</p>}
         <p className="mt-1 text-xs text-slate-500">{reactionLabels[activity.reaction] ?? activity.reaction}{activity.contact_id && contactNames.get(activity.contact_id) ? ` · ${contactNames.get(activity.contact_id)}` : ""}{activity.contact_method ? ` · ${methodLabels[activity.contact_method] ?? activity.contact_method}` : ""}</p>
-        <div className="mt-2 flex flex-wrap items-center gap-3">{editingEnabled && <button type="button" onClick={() => setSelected(activity)} className="text-xs font-bold text-indigo-700 underline">수정</button>}{history.length > 0 && <details className="text-xs text-slate-600"><summary className="cursor-pointer font-semibold">수정 이력 {history.length}건</summary><div className="mt-2 space-y-3">{history.map((revision) => {
+        <div className="mt-2 flex flex-wrap items-center gap-3">{editingEnabled && <button type="button" onClick={() => setSelected(activity)} className="text-xs font-bold text-indigo-700 underline">수정</button>}{canDelete && <button type="button" onClick={() => setDeleting(activity)} className="text-xs font-bold text-rose-700 underline">삭제</button>}{history.length > 0 && <details className="text-xs text-slate-600"><summary className="cursor-pointer font-semibold">수정 이력 {history.length}건</summary><div className="mt-2 space-y-3">{history.map((revision) => {
           const changes = editableFields.filter(([key]) => revision.before_data[key] !== revision.after_data[key]);
           return <div key={revision.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3"><p className="font-semibold">{displayDate(revision.changed_at)} · {revision.changed_by_email ?? "관리자"}</p>{changes.length ? <ul className="mt-2 space-y-1">{changes.map(([key, label]) => <li key={key}>{label}: {formatValue(key, revision.before_data[key])} → {formatValue(key, revision.after_data[key])}</li>)}</ul> : <p className="mt-2">값 변경 없음</p>}</div>;
         })}</div></details>}</div>
@@ -113,5 +134,6 @@ export function SalesActivityTimeline({ activities, contacts, revisions, editing
     })}</ol>
     {!visibleActivities.length && <div className="mt-5 rounded-xl bg-slate-50 p-6 text-center text-sm text-slate-500">첫 방문이나 전화 결과를 왼쪽에서 기록해 주세요.</div>}
     {selected && <EditDialog key={`${selected.id}-${selected.edit_version ?? 0}`} activity={selected} contacts={contacts} onClose={() => { setSelected(null); router.refresh(); }} />}
+    {deleting && <DeleteActivityDialog key={deleting.id} activity={deleting} revisionCount={revisions.filter((revision) => revision.activity_id === deleting.id).length} onClose={() => { setDeleting(null); router.refresh(); }} />}
   </>;
 }
