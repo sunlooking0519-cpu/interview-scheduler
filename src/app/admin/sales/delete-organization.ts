@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requireSalesStaff } from "@/server/admin-auth";
+import { scheduleCalendarSync } from "@/server/calendar-sync";
 
 export type OrganizationDeletionCounts = {
   contacts: number; cards: number; activities: number; meetings: number;
@@ -50,13 +51,11 @@ export async function deleteSalesOrganization(
   if (ownerError || !organization) return failure("기관을 찾지 못했습니다. 목록을 새로고침해 주세요.");
   if (organization.created_by !== user.id) return failure("본인 소유 기관만 삭제할 수 있습니다.");
   if (organization.name !== confirmedName) return failure("기관명을 정확히 입력해 주세요.");
-  if (expectedCounts.meetings > 0) return failure("연결된 미팅이 있습니다. Google 일정이 남지 않도록 미팅을 먼저 정리해 주세요.");
 
   const { data, error } = await db.rpc("delete_sales_organization", {
     p_organization_id: id, p_confirmed_name: confirmedName, p_expected_counts: expectedCounts,
   });
   if (error?.code === "40001") return failure("삭제 영향을 확인한 뒤 기록이 변경됐습니다. 창을 닫고 다시 확인해 주세요.");
-  if (error?.code === "23503") return failure("연결된 미팅을 먼저 정리해 주세요.");
   if (error) return failure("기관을 삭제하지 못했습니다. 삭제 SQL 적용 여부와 연결 상태를 확인해 주세요.");
 
   const imagePaths = Array.isArray(data) ? data.filter((path): path is string => typeof path === "string") : [];
@@ -69,5 +68,6 @@ export async function deleteSalesOrganization(
   if (failedPaths.length) console.error("sales organization image cleanup failed", { organizationId: id, paths: failedPaths });
   revalidatePath("/admin/sales");
   revalidatePath("/admin/sales/cards");
+  if (expectedCounts.meetings > 0) scheduleCalendarSync();
   return { deleted: true, error: "", photoWarning: failedPaths.length ? `기관 기록은 삭제됐지만 명함 사진 ${failedPaths.length}장의 Storage 정리에 실패했습니다. 관리자에게 확인을 요청해 주세요.` : "" };
 }

@@ -54,8 +54,8 @@ export function DeleteSalesOrganizationDialog({ id, name }: { id: string; name: 
             </section>)}
             <p className="text-xs text-slate-600">활동 수정 이력 {preview.counts.revisions}건 · 제안서 이전 버전 {preview.counts.proposal_versions}건도 함께 삭제됩니다.</p>
           </div>
-          {preview.counts.meetings > 0 ? <p role="alert" className="mt-4 rounded-xl bg-amber-50 p-3 text-sm text-amber-900">미팅이 연결돼 있어 기관을 삭제할 수 없습니다. Google 캘린더에 일정이 남지 않도록 미팅을 먼저 정리해 주세요.</p>
-            : <form action={action} className="mt-5">
+          {preview.counts.meetings > 0 && <p className="mt-4 rounded-xl bg-amber-50 p-3 text-sm text-amber-900">연결된 미팅 {preview.counts.meetings}건의 Google 캘린더 일정도 삭제 대기열에 들어갑니다. 동기화 실패 시 관리자에서 재시도해 주세요.</p>}
+          <form action={action} className="mt-5">
               <input type="hidden" name="organization_id" value={id} />
               <input type="hidden" name="expected_counts" value={JSON.stringify(preview.counts)} />
               <label className="block text-sm font-semibold text-slate-700">삭제하려면 기관명 ‘{preview.name}’을 입력하세요
@@ -66,9 +66,9 @@ export function DeleteSalesOrganizationDialog({ id, name }: { id: string; name: 
                 <button type="button" onClick={() => dialog.current?.close()} className="rounded-xl border border-slate-300 px-4 py-3 text-sm font-semibold">취소</button>
                 <button type="submit" disabled={pending} className="rounded-xl bg-rose-700 px-5 py-3 text-sm font-bold text-white disabled:opacity-50">{pending ? "삭제 중…" : "확인 후 영구 삭제"}</button>
               </div>
-            </form>}
+          </form>
         </>}
-        {(!preview || preview.counts.meetings > 0) && <button type="button" onClick={() => dialog.current?.close()} className="mt-5 rounded-xl border border-slate-300 px-4 py-3 text-sm font-semibold">닫기</button>}
+        {!preview && <button type="button" onClick={() => dialog.current?.close()} className="mt-5 rounded-xl border border-slate-300 px-4 py-3 text-sm font-semibold">닫기</button>}
       </div>}
     </dialog>
   </>;

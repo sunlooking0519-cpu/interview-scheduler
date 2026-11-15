@@ -62,15 +62,18 @@ begin
     'revisions', (select count(*) from scheduler.sales_activity_revisions where organization_id = p_organization_id),
     'proposal_versions', (select count(*) from scheduler.sales_proposal_versions v join scheduler.sales_proposals p on p.id = v.proposal_id where p.organization_id = p_organization_id)
   ) into v_counts;
-  if (v_counts->>'meetings')::integer > 0 then
-    raise exception 'Delete or cancel linked meetings first to avoid orphaned Google events' using errcode = '23503';
-  end if;
   if p_expected_counts is distinct from v_counts then
     raise exception 'Organization records changed since preview' using errcode = '40001';
   end if;
 
   select coalesce(array_agg(image_path), array[]::text[]) into v_images
   from scheduler.sales_business_cards where organization_id = p_organization_id;
+  -- The queue worker deletes Google events when their meeting row no longer exists.
+  insert into scheduler.sales_calendar_jobs (meeting_id)
+  select id from scheduler.sales_meetings where organization_id = p_organization_id
+  on conflict (meeting_id) do update set
+    version = scheduler.sales_calendar_jobs.version + 1,
+    leased_until = null, last_error = null, updated_at = now();
   delete from scheduler.sales_organizations where id = p_organization_id;
   return v_images;
 end;
