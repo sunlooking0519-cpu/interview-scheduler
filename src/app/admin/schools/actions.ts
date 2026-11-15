@@ -54,5 +54,6 @@ export async function assignSchools(input: AssignInput): Promise<{ changed: numb
   if (error?.code === "40001") return failure("학교 목록이 변경됐습니다. 새로고침 후 다시 배정해 주세요.");
   if (error) return failure("배정하지 못했습니다. 학교관리 SQL 적용 여부와 담당자 권한을 확인해 주세요.");
   revalidatePath("/admin/schools");
+  revalidatePath("/admin/members");
   return { changed: Number(data ?? 0), error: "" };
 }

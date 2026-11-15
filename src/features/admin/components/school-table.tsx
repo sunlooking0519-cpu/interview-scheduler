@@ -4,16 +4,21 @@ import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { assignSchools } from "@/app/admin/schools/actions";
 import { schoolPageSize, type SchoolFilters } from "@/features/admin/school-filters";
+import { SchoolFollowUpDialog, type SchoolHistory } from "./school-follow-up-dialog";
 
 export type SchoolRow = {
   id: string; province: string; district: string; level: string; name: string;
   phone: string; source_loaded_on: string | null; assigned_to: string | null; assigned_at: string | null;
+  contact_name: string | null; contact_email: string | null; contact_date: string | null;
+  contact_method: string | null; proposal_status: string | null; reaction: string | null;
+  notes: string | null; management_updated_on: string | null;
 };
 export type SchoolAssignee = { id: string; name: string; email: string };
 
-export function SchoolTable({ rows, total, page, filters, admin, assignees, assigneeById, assignmentEnabled }: {
+export function SchoolTable({ rows, total, page, filters, admin, assignees, assigneeById, assignmentEnabled, historyBySchool, today }: {
   rows: SchoolRow[]; total: number; page: number; pageCount: number; filters: SchoolFilters;
   admin: boolean; assignees: SchoolAssignee[]; assigneeById: Record<string, SchoolAssignee>; assignmentEnabled: boolean;
+  historyBySchool: Record<string, SchoolHistory[]>; today: string;
 }) {
   const router = useRouter();
   const dialog = useRef<HTMLDialogElement>(null);
@@ -67,14 +72,15 @@ export function SchoolTable({ rows, total, page, filters, admin, assignees, assi
     <div className="mt-5 space-y-3 lg:hidden">{rows.map((row) => <article key={row.id} className="rounded-xl border border-slate-200 p-4">
       <div className="flex items-start gap-3">{checkbox(row, "mobile-school")}<div className="min-w-0 flex-1"><h3 className="break-words font-bold text-slate-950">{row.name}</h3><p className="mt-1 text-xs text-slate-500">{row.province} · {row.district} · {row.level}</p></div></div>
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm"><a href={`tel:${row.phone.replace(/[^+\d]/g, "")}`} className="text-indigo-700 underline">{row.phone}</a><span className={row.assigned_to ? "font-semibold text-indigo-700" : "text-slate-500"}>{assignedName(row)}</span></div>
+      <div className="mt-3 flex items-center justify-between gap-2"><span className="text-xs text-slate-500">{row.management_updated_on ? `최근 기록 ${row.management_updated_on}` : "기록 없음"}</span><SchoolFollowUpDialog school={row} history={historyBySchool[row.id] ?? []} today={today} /></div>
     </article>)}</div>
     <div className="mt-5 hidden overflow-hidden rounded-xl border border-slate-200 lg:block">
       <table className="w-full table-fixed text-left text-sm"><thead className="bg-slate-50 text-slate-600"><tr>
         {admin && <th className="w-12 px-3 py-3"><input type="checkbox" checked={allPageSelected} onChange={() => setSelected(allPageSelected ? new Set() : new Set(rows.map((row) => row.id)))} aria-label="현재 페이지 전체 선택" className="h-5 w-5 accent-indigo-600" /></th>}
-        <th className="w-[26%] px-3 py-3">학교명</th><th className="w-[19%] px-3 py-3">광역지역·지역</th><th className="w-[12%] px-3 py-3">학교급</th><th className="w-[18%] px-3 py-3">대표전화</th><th className="px-3 py-3">담당자</th>
+        <th className="w-[23%] px-3 py-3">학교명</th><th className="w-[17%] px-3 py-3">광역지역·지역</th><th className="w-[11%] px-3 py-3">학교급</th><th className="w-[16%] px-3 py-3">대표전화</th><th className="px-3 py-3">담당자</th><th className="w-28 px-3 py-3">관리</th>
       </tr></thead><tbody className="divide-y divide-slate-100">{rows.map((row) => <tr key={row.id} className="hover:bg-slate-50">
         {admin && <td className="px-3 py-3">{checkbox(row, "desktop-school")}</td>}
-        <td className="break-words px-3 py-3 font-semibold text-slate-950">{row.name}</td><td className="px-3 py-3 text-slate-600">{row.province} · {row.district}</td><td className="px-3 py-3 text-slate-600">{row.level}</td><td className="px-3 py-3"><a href={`tel:${row.phone.replace(/[^+\d]/g, "")}`} className="text-indigo-700 underline">{row.phone}</a></td><td className="break-words px-3 py-3">{assignedName(row)}</td>
+        <td className="break-words px-3 py-3 font-semibold text-slate-950">{row.name}</td><td className="px-3 py-3 text-slate-600">{row.province} · {row.district}</td><td className="px-3 py-3 text-slate-600">{row.level}</td><td className="px-3 py-3"><a href={`tel:${row.phone.replace(/[^+\d]/g, "")}`} className="text-indigo-700 underline">{row.phone}</a></td><td className="break-words px-3 py-3">{assignedName(row)}</td><td className="px-3 py-3"><SchoolFollowUpDialog school={row} history={historyBySchool[row.id] ?? []} today={today} /></td>
       </tr>)}</tbody></table>
     </div>
     {!rows.length && <p className="mt-5 rounded-xl bg-slate-50 p-8 text-center text-sm text-slate-500">{total ? "이 페이지에 학교가 없습니다. 이전 페이지로 이동해 주세요." : "조건에 맞는 학교가 없습니다."}</p>}
