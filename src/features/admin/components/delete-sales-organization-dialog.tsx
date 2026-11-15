@@ -22,7 +22,7 @@ export function DeleteSalesOrganizationDialog({ id, name }: { id: string; name: 
     setPreviewError("");
     dialog.current?.showModal();
     startTransition(async () => {
-      const result = await getSalesOrganizationDeletionPreview(id);
+      const result = await getSalesOrganizationDeletionPreview(id, name);
       setPreview(result.preview);
       setPreviewError(result.error);
     });
@@ -56,7 +56,7 @@ export function DeleteSalesOrganizationDialog({ id, name }: { id: string; name: 
           </div>
           {preview.counts.meetings > 0 && <p className="mt-4 rounded-xl bg-amber-50 p-3 text-sm text-amber-900">연결된 미팅 {preview.counts.meetings}건의 Google 캘린더 일정도 삭제 대기열에 들어갑니다. 동기화 실패 시 관리자에서 재시도해 주세요.</p>}
           <form action={action} className="mt-5">
-              <input type="hidden" name="organization_id" value={id} />
+              <input type="hidden" name="organization_id" value={preview.id} />
               <input type="hidden" name="expected_counts" value={JSON.stringify(preview.counts)} />
               <label className="block text-sm font-semibold text-slate-700">삭제하려면 기관명 ‘{preview.name}’을 입력하세요
                 <input name="organization_name" required autoComplete="off" className="mt-2 w-full rounded-xl border border-slate-300 p-3 text-sm" />

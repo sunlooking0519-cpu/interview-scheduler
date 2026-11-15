@@ -9,24 +9,32 @@ export type OrganizationDeletionCounts = {
   proposals: number; revisions: number; proposal_versions: number;
 };
 export type OrganizationDeletionPreview = {
-  name: string; counts: OrganizationDeletionCounts;
+  id: string; name: string; counts: OrganizationDeletionCounts;
   contacts: string[]; cards: string[]; activities: string[]; meetings: string[]; proposals: string[];
 };
 type DeleteOrganizationState = { deleted: boolean; error: string; photoWarning: string };
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const countKeys = ["contacts", "cards", "activities", "meetings", "proposals", "revisions", "proposal_versions"] as const;
 
-export async function getSalesOrganizationDeletionPreview(id: string): Promise<{ preview: OrganizationDeletionPreview | null; error: string }> {
-  if (!uuid.test(id)) return { preview: null, error: "기관을 확인해 주세요." };
+export async function getSalesOrganizationDeletionPreview(id: string, name: string): Promise<{ preview: OrganizationDeletionPreview | null; error: string }> {
   const { user, supabase } = await requireSalesStaff();
   const db = supabase.schema("scheduler");
+  let organizationId = id;
+  if (!uuid.test(organizationId)) {
+    console.warn("sales deletion preview received invalid organization id", { id, name });
+    if (!name || name.length > 200) return { preview: null, error: "기관을 확인해 주세요." };
+    const { data: matches, error: lookupError } = await db.from("sales_organizations")
+      .select("id").eq("created_by", user.id).eq("name", name).limit(2);
+    if (lookupError || matches?.length !== 1) return { preview: null, error: "기관을 하나로 특정하지 못했습니다. 기관 상세에서 다시 시도해 주세요." };
+    organizationId = matches[0].id;
+  }
   const { data: owner, error: ownerError } = await db.from("sales_organizations")
-    .select("created_by").eq("id", id).maybeSingle();
+    .select("created_by").eq("id", organizationId).maybeSingle();
   if (ownerError || !owner) return { preview: null, error: "기관을 찾지 못했습니다." };
   if (owner.created_by !== user.id) return { preview: null, error: "본인 소유 기관만 삭제할 수 있습니다." };
-  const { data, error } = await db.rpc("preview_sales_organization_deletion", { p_organization_id: id });
+  const { data, error } = await db.rpc("preview_sales_organization_deletion", { p_organization_id: organizationId });
   if (error || !data) return { preview: null, error: "삭제 영향을 불러오지 못했습니다. 삭제 SQL 적용 여부를 확인해 주세요." };
-  return { preview: data as OrganizationDeletionPreview, error: "" };
+  return { preview: { ...(data as Omit<OrganizationDeletionPreview, "id">), id: organizationId }, error: "" };
 }
 
 export async function deleteSalesOrganization(
