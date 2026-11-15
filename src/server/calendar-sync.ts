@@ -26,11 +26,11 @@ export async function syncCalendarQueue() {
     const job = (jobs ?? [])[0] as { reservation_id: string; version: number } | undefined;
     if (!job) break;
     try {
-      const { data: row, error: readError } = await db.from("interviews").select("name,interview_date,interview_time,status").eq("id", job.reservation_id).maybeSingle();
+      const { data: row, error: readError } = await db.from("interviews").select("name,interview_date,interview_time,status,owner_id").eq("id", job.reservation_id).maybeSingle();
       if (readError) throw new Error("Reservation unavailable");
       const id = googleEventId(job.reservation_id);
       let response: Response;
-      if (!row || row.status === "cancelled") {
+      if (!row || row.status === "cancelled" || row.owner_id) {
         response = await googleRequest(token, connection.calendar_id, `events/${id}`, { method: "DELETE" });
         if (!response.ok && ![404, 410].includes(response.status)) throw new Error("Google cancellation failed");
       } else {

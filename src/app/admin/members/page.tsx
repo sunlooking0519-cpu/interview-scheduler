@@ -4,6 +4,7 @@ import { createServiceClient } from "../../../../lib/supabase/service";
 import { buildInstructorHierarchy, type HiredTeacher, type StaffAccount } from "@/features/admin/instructor-hierarchy";
 import { loadSalesOrganizationData } from "@/server/sales-organization-data";
 import { SalesExportDialog } from "@/features/admin/components/sales-export-dialog";
+import { koreaToday } from "@/features/booking/dates";
 import { setInstructorAccess } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -12,6 +13,7 @@ const dateLabel = (value: string) => new Intl.DateTimeFormat("ko-KR", { timeZone
 const proposalLabels: Record<string, string> = { not_submitted: "미제출", planned: "제출 예정", submitted: "제출 완료" };
 const reactionLabels: Record<string, string> = { interested: "관심 높음", reviewing: "검토 중", waiting: "시기 대기", neutral: "보통", no_budget: "예산 없음", not_interested: "관심 없음", no_response: "응답 없음" };
 const salesStages: Record<string, string> = { lead: "신규", contacted: "접촉", meeting: "상담", proposal: "제안", won: "성사", lost: "종료" };
+type ManagerInterview = { id: number | string; owner_id: string; name: string; phone: string; interview_date: string; interview_time: string; status: string; hired_at: string | null };
 const messages: Record<string, string> = {
   approved: "중간관리자 권한을 부여했습니다. 이제 면접과 채용을 처리할 수 있습니다.",
   revoked: "중간관리자 권한을 해제했습니다. 기존 채용 기록은 보존됩니다.",
@@ -24,6 +26,22 @@ const messages: Record<string, string> = {
 function TeacherList({ teachers }: { teachers: HiredTeacher[] }) {
   if (!teachers.length) return <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-500">아직 채용한 강사가 없습니다.</p>;
   return <ul className="divide-y divide-slate-100">{teachers.map((teacher) => <li key={teacher.id} className="flex flex-wrap items-center justify-between gap-2 py-3 first:pt-0"><div><p className="font-semibold text-slate-900">{teacher.name}</p><p className="text-xs text-slate-500">{teacher.phone}{teacher.email ? ` · ${teacher.email}` : ""}</p></div><span className="text-xs text-slate-500">채용 {dateLabel(teacher.hired_at)}</span></li>)}</ul>;
+}
+
+function ManagerInterviewList({ interviews }: { interviews: ManagerInterview[] }) {
+  const upcoming = interviews.filter((interview) => interview.status === "confirmed" && !interview.hired_at && interview.interview_date >= koreaToday()).length;
+  return <div className="mt-4 border-t border-indigo-100 pt-3">
+    <p className="text-sm font-bold text-slate-900">면접 현황 · 예정 {upcoming}건</p>
+    <details className="mt-2">
+      <summary className="cursor-pointer text-sm font-semibold text-indigo-700">면접 예약 {interviews.length}건 보기</summary>
+      {interviews.length ? <ul className="mt-2 max-h-72 divide-y divide-indigo-100 overflow-y-auto">{interviews.map((interview) =>
+        <li key={interview.id} className="py-2 text-sm text-slate-800">
+          <strong>{interview.interview_date} {interview.interview_time} · {interview.name}</strong>
+          <p className="mt-1 text-xs text-slate-600">{interview.hired_at ? "채용" : interview.status === "cancelled" ? "예약 취소" : "예약 확정"} · {interview.phone}</p>
+        </li>
+      )}</ul> : <p className="mt-2 text-sm text-slate-500">이 관리자의 면접 예약이 없습니다.</p>}
+    </details>
+  </div>;
 }
 
 export default async function MembersPage({ searchParams }: { searchParams: Promise<{ result?: string }> }) {
@@ -55,10 +73,14 @@ export default async function MembersPage({ searchParams }: { searchParams: Prom
   const hiresTask = supabase.schema("scheduler").from("interviews")
     .select("id,name,email,phone,interview_date,hired_at,hired_by")
     .not("hired_at", "is", null).order("hired_at", { ascending: false }).limit(1000);
+  const managerInterviewsTask = supabase.schema("scheduler").from("interviews")
+    .select("id,owner_id,name,phone,interview_date,interview_time,status,hired_at")
+    .not("owner_id", "is", null)
+    .order("interview_date", { ascending: false }).order("interview_time", { ascending: false }).limit(1000);
   const workspacesTask = supabase.schema("scheduler").from("sales_workspaces").select("id,owner_user_id").limit(1000);
   const salesTask = loadSalesOrganizationData(supabase);
-  const [{ accounts, error: accountError }, { data: hires, error: hiresError }, workspaces, salesData] = await Promise.all([
-    accountTask, hiresTask, workspacesTask, salesTask,
+  const [{ accounts, error: accountError }, { data: hires, error: hiresError }, { data: managerInterviews, error: managerInterviewsError }, workspaces, salesData] = await Promise.all([
+    accountTask, hiresTask, managerInterviewsTask, workspacesTask, salesTask,
   ]);
   if (hiresError) hiringError = "채용 기록을 불러오지 못했습니다. instructor-hiring-migration.sql 적용 여부를 확인해 주세요.";
   else teachers = (hires ?? []) as HiredTeacher[];
@@ -67,6 +89,10 @@ export default async function MembersPage({ searchParams }: { searchParams: Prom
   middleManagers.sort((a, b) => (teachersByRecruiter.get(b.id)?.length ?? 0) - (teachersByRecruiter.get(a.id)?.length ?? 0) || a.name.localeCompare(b.name, "ko"));
   requests.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const hiresById = new Map(teachers.map((teacher) => [String(teacher.id), teacher]));
+  const interviewsByManager = new Map<string, ManagerInterview[]>();
+  for (const interview of (managerInterviews ?? []) as ManagerInterview[]) {
+    interviewsByManager.set(interview.owner_id, [...(interviewsByManager.get(interview.owner_id) ?? []), interview]);
+  }
   const workspaceOwner = new Map((workspaces.data ?? []).map((item) => [item.id, item.owner_user_id]));
   const salesByManager = new Map<string, NonNullable<typeof salesData>["rows"]>();
   for (const organization of salesData?.rows ?? []) {
@@ -79,9 +105,10 @@ export default async function MembersPage({ searchParams }: { searchParams: Prom
     {result && messages[result] && <p role={["approved", "revoked"].includes(result) ? "status" : "alert"} className="rounded-xl bg-indigo-50 p-4 text-sm text-indigo-800">{messages[result]}</p>}
     {accountError && <p role="alert" className="rounded-xl bg-red-50 p-4 text-sm text-red-700">{accountError}</p>}
     {hiringError && <p role="alert" className="rounded-xl bg-amber-50 p-4 text-sm text-amber-800">{hiringError}</p>}
+    {managerInterviewsError && <p role="alert" className="rounded-xl bg-amber-50 p-4 text-sm text-amber-800">중간관리자의 면접 예약을 불러오지 못했습니다.</p>}
     {salesError && <p role="alert" className="rounded-xl bg-amber-50 p-4 text-sm text-amber-800">강사별 영업 현황을 불러오지 못했습니다. sales-manager-workspaces-migration.sql 적용 여부를 확인해 주세요.</p>}
     <section aria-label="강사 조직 요약" className="grid gap-3 sm:grid-cols-3"><div className="rounded-2xl border border-slate-200 bg-white p-5"><p className="text-sm font-semibold text-slate-600">최고관리자</p><p className="mt-2 text-3xl font-bold">{topAdministrators.length}</p></div><div className="rounded-2xl border border-indigo-200 bg-indigo-50 p-5"><p className="text-sm font-semibold text-indigo-700">중간관리자 · 면접·채용 권한</p><p className="mt-2 text-3xl font-bold">{middleManagers.length}</p></div><div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5"><p className="text-sm font-semibold text-emerald-700">채용강사</p><p className="mt-2 text-3xl font-bold">{teachers.length}</p></div></section>
-    <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6"><h2 className="text-xl font-bold">강사 구조</h2><p className="mt-1 text-sm text-slate-500">채용자는 채용 버튼을 누른 계정의 기록입니다.</p><div className="mt-5 rounded-xl bg-slate-950 p-4 text-white"><p className="text-xs font-bold text-indigo-200">최고관리자</p><div className="mt-2 flex flex-wrap gap-2">{topAdministrators.map((account) => <span key={account.id} className="rounded-lg bg-white/10 px-3 py-2 text-sm">{account.name || account.email}</span>)}{!topAdministrators.length && <span className="text-sm text-slate-300">계정을 불러오지 못했습니다.</span>}</div></div><div className="mx-6 h-5 border-l-2 border-indigo-200"/><div className="grid gap-3 lg:grid-cols-2">{middleManagers.map((manager) => { const recruited = teachersByRecruiter.get(manager.id) ?? []; const sales = salesByManager.get(manager.id) ?? []; return <article key={manager.id} className="rounded-xl border border-indigo-200 bg-indigo-50/30 p-4"><div className="flex flex-wrap items-center justify-between gap-2"><div><p className="text-xs font-bold text-indigo-700">중간관리자 · 면접·채용 가능</p><h3 className="mt-1 font-bold text-slate-950">{manager.name || manager.email}</h3><p className="text-xs text-slate-500">{manager.email}</p></div><span className="rounded-full bg-indigo-100 px-3 py-1 text-sm font-bold text-indigo-800">채용 {recruited.length}명</span></div><div className="mt-4 border-t border-indigo-100 pt-3"><p className="mb-2 text-xs font-bold text-slate-600">이 관리자가 채용한 강사</p><TeacherList teachers={recruited}/></div><div className="mt-4 border-t border-indigo-100 pt-3"><div className="flex flex-wrap items-center justify-between gap-2"><p className="text-sm font-bold text-slate-900">영업 현황 · 기관 {sales.length}곳</p><SalesExportDialog manager={{ id: manager.id, name: manager.name || manager.email }} count={sales.length} disabled={Boolean(salesError) || !sales.length} /></div><p className="mt-1 text-xs text-slate-600">제안서 제출 완료 {sales.filter((item) => item.proposalStatus === "submitted").length}곳 · 최근 업데이트 {sales[0] ? dateLabel(sales[0].lastUpdatedAt) : "없음"}</p><details className="mt-3"><summary className="cursor-pointer text-sm font-semibold text-indigo-700">기관별 상태 보기</summary><ul className="mt-2 max-h-72 divide-y divide-indigo-100 overflow-y-auto">{sales.map((item) => <li key={item.id} className="py-2 text-sm"><Link href={`/admin/sales/${item.id}`} className="font-semibold text-slate-900 underline">{item.name}</Link><p className="mt-1 text-xs text-slate-600">{salesStages[item.stage ?? ""] ?? "단계 미기록"} · {proposalLabels[item.proposalStatus ?? ""] ?? "제안서 미기록"} · {reactionLabels[item.reaction ?? ""] ?? "반응 미기록"} · {dateLabel(item.lastUpdatedAt)}</p></li>)}</ul>{!sales.length && <p className="mt-2 text-sm text-slate-500">등록된 기관이 없습니다.</p>}</details></div></article>; })}{!middleManagers.length && <p className="rounded-xl bg-slate-50 p-5 text-sm text-slate-500">승인된 중간관리자가 없습니다. 아래 가입 요청에서 승인해 주세요.</p>}</div></section>
+    <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6"><h2 className="text-xl font-bold">강사 구조</h2><p className="mt-1 text-sm text-slate-500">채용자는 채용 버튼을 누른 계정의 기록입니다.</p><div className="mt-5 rounded-xl bg-slate-950 p-4 text-white"><p className="text-xs font-bold text-indigo-200">최고관리자</p><div className="mt-2 flex flex-wrap gap-2">{topAdministrators.map((account) => <span key={account.id} className="rounded-lg bg-white/10 px-3 py-2 text-sm">{account.name || account.email}</span>)}{!topAdministrators.length && <span className="text-sm text-slate-300">계정을 불러오지 못했습니다.</span>}</div></div><div className="mx-6 h-5 border-l-2 border-indigo-200"/><div className="grid gap-3 lg:grid-cols-2">{middleManagers.map((manager) => { const recruited = teachersByRecruiter.get(manager.id) ?? []; const sales = salesByManager.get(manager.id) ?? []; return <article key={manager.id} className="rounded-xl border border-indigo-200 bg-indigo-50/30 p-4"><div className="flex flex-wrap items-center justify-between gap-2"><div><p className="text-xs font-bold text-indigo-700">중간관리자 · 면접·채용 가능</p><h3 className="mt-1 font-bold text-slate-950">{manager.name || manager.email}</h3><p className="text-xs text-slate-500">{manager.email}</p></div><span className="rounded-full bg-indigo-100 px-3 py-1 text-sm font-bold text-indigo-800">채용 {recruited.length}명</span></div><div className="mt-4 border-t border-indigo-100 pt-3"><p className="mb-2 text-xs font-bold text-slate-600">이 관리자가 채용한 강사</p><TeacherList teachers={recruited}/></div><ManagerInterviewList interviews={interviewsByManager.get(manager.id) ?? []} /><div className="mt-4 border-t border-indigo-100 pt-3"><div className="flex flex-wrap items-center justify-between gap-2"><p className="text-sm font-bold text-slate-900">영업 현황 · 기관 {sales.length}곳</p><SalesExportDialog manager={{ id: manager.id, name: manager.name || manager.email }} count={sales.length} disabled={Boolean(salesError) || !sales.length} /></div><p className="mt-1 text-xs text-slate-600">제안서 제출 완료 {sales.filter((item) => item.proposalStatus === "submitted").length}곳 · 최근 업데이트 {sales[0] ? dateLabel(sales[0].lastUpdatedAt) : "없음"}</p><details className="mt-3"><summary className="cursor-pointer text-sm font-semibold text-indigo-700">기관별 상태 보기</summary><ul className="mt-2 max-h-72 divide-y divide-indigo-100 overflow-y-auto">{sales.map((item) => <li key={item.id} className="py-2 text-sm"><Link href={`/admin/sales/${item.id}`} className="font-semibold text-slate-900 underline">{item.name}</Link><p className="mt-1 text-xs text-slate-600">{salesStages[item.stage ?? ""] ?? "단계 미기록"} · {proposalLabels[item.proposalStatus ?? ""] ?? "제안서 미기록"} · {reactionLabels[item.reaction ?? ""] ?? "반응 미기록"} · {dateLabel(item.lastUpdatedAt)}</p></li>)}</ul>{!sales.length && <p className="mt-2 text-sm text-slate-500">등록된 기관이 없습니다.</p>}</details></div></article>; })}{!middleManagers.length && <p className="rounded-xl bg-slate-50 p-5 text-sm text-slate-500">승인된 중간관리자가 없습니다. 아래 가입 요청에서 승인해 주세요.</p>}</div></section>
     {(directHires.length > 0 || formerManagers.length > 0 || unattributedHires.length > 0) && <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6"><h2 className="text-xl font-bold">다른 채용 기록</h2><div className="mt-4 space-y-4">{topAdministrators.filter((account) => teachersByRecruiter.has(account.id)).map((account) => <div key={account.id} className="rounded-xl border border-slate-200 p-4"><h3 className="mb-3 font-bold">최고관리자 직접 채용 · {account.name || account.email}</h3><TeacherList teachers={teachersByRecruiter.get(account.id) ?? []}/></div>)}{formerManagers.map((account) => <div key={account.id} className="rounded-xl border border-slate-200 p-4"><h3 className="mb-3 font-bold">권한 해제된 중간관리자 · {account.name || account.email}</h3><TeacherList teachers={teachersByRecruiter.get(account.id) ?? []}/></div>)}{unattributedHires.length > 0 && <div className="rounded-xl border border-amber-200 p-4"><h3 className="mb-3 font-bold">채용자 미확인</h3><TeacherList teachers={unattributedHires}/></div>}</div></section>}
     <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
       <div className="flex flex-wrap items-end justify-between gap-2"><div><h2 className="text-xl font-bold">관리자 승격 요청</h2><p className="mt-1 text-sm text-slate-500">채용 기록의 휴대전화로 신청자를 확인한 뒤 승인하세요. 확인을 누르면 면접·채용 권한이 부여됩니다.</p></div><Link href="/admin?list=hired" className="text-sm font-bold text-indigo-700">채용 목록 보기 →</Link></div>

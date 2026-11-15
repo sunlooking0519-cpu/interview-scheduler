@@ -44,8 +44,8 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
       <div className="flex flex-wrap items-start justify-between gap-5">
         <div>
           <p className="text-sm font-semibold text-indigo-600">HR WORKSPACE</p>
-          <h1 className="mt-3 text-3xl font-bold">{admin ? "면접 관리 대시보드" : "내 면접 관리"}</h1>
-          <p className="mt-3 text-slate-500">{user.email}님, {admin ? "지원자의 일정과 채용 현황" : "내 예약과 채용 현황"}을 확인하세요.</p>
+          <h1 className="mt-3 text-3xl font-bold">내 면접 관리</h1>
+          <p className="mt-3 text-slate-500">{user.email}님, 내 예약과 채용 현황을 확인하세요.{admin ? " 중간관리자의 면접 현황은 강사 관리에서 확인할 수 있습니다." : ""}</p>
         </div>
       </div>
       {loadError && <p role="alert" className="mt-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{loadError}</p>}

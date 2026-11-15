@@ -28,13 +28,13 @@ export async function getInterviewReservations(
     .schema("scheduler")
     .from("interviews")
     .select("id, name, email, phone, interview_date, interview_time, status, hired_at, hired_by, owner_id, created_at, resume_url");
-  if (!admin) query = query.eq("owner_id", user.id);
+  query = admin ? query.is("owner_id", null) : query.eq("owner_id", user.id);
   let { data, error } = await query
     .order("interview_date", { ascending: true })
     .order("interview_time", { ascending: true });
 
-  // Existing administrators retain their dashboard while the owner migration is pending.
-  // Instructors fail closed because the old table exposes every reservation.
+  // Legacy databases without owner_id only contain the administrator's default bookings.
+  // Instructors fail closed because those databases cannot separate their reservations.
   if (admin && error?.code === "42703" && error.message.includes("owner_id")) {
     const fallback = await supabase.schema("scheduler").from("interviews")
       .select("id, name, email, phone, interview_date, interview_time, status, hired_at, created_at, resume_url")

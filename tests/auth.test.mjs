@@ -1146,13 +1146,13 @@ test("proposal save uses the expected revision and reports concurrent edits", as
   assert.match((await actions.saveProposal(proposalId, 3, "제안", "수정")).error, /다른 곳에서 수정/);
 });
 
-test("Google sync creates, updates, cancels and preserves failed or newer queue jobs", async () => {
-  for (const status of ["confirmed", "existing", "cancelled", "failure"]) {
+test("Google sync creates, updates, cancels and excludes manager bookings from the primary calendar", async () => {
+  for (const status of ["confirmed", "existing", "cancelled", "manager", "failure"]) {
     const requests = [], acknowledgements = [], failures = [];
     const jobs = [{ reservation_id: "2", version: 7 }];
     let claimed = false;
     const db = { rpc: async () => { const data = claimed ? [] : jobs; claimed = true; return { data }; }, from(table) {
-      if (table === "interviews") return { select() { return { eq() { return { maybeSingle: async () => ({ data: { name: "지원자", interview_date: "2026-10-16", interview_time: "11:00", status } }) }; } }; } };
+      if (table === "interviews") return { select() { return { eq() { return { maybeSingle: async () => ({ data: { name: "지원자", interview_date: "2026-10-16", interview_time: "11:00", status: status === "manager" ? "confirmed" : status, owner_id: status === "manager" ? "manager-id" : null } }) }; } }; } };
       return { delete() { return { eq(key, value) { acknowledgements.push([key, value]); return { eq: async (key2, value2) => { acknowledgements.push([key2, value2]); return {}; } }; } }; }, update(value) { failures.push(value); return { eq() { return { eq: async () => ({}) }; } }; } };
     } };
     const sync = load("src/server/calendar-sync.ts", {
@@ -1170,7 +1170,7 @@ test("Google sync creates, updates, cancels and preserves failed or newer queue 
     else {
       assert.equal(result.processed, 1);
       assert.deepEqual(acknowledgements, [["reservation_id", "2"], ["version", 7]]);
-      if (status === "cancelled") assert.equal(requests[0].method, "DELETE");
+      if (status === "cancelled" || status === "manager") assert.deepEqual(requests.map((request) => request.method), ["DELETE"]);
       else {
         assert.deepEqual(requests.map((r) => r.method), status === "existing" ? ["PUT"] : ["PUT", "POST"]);
         const event = JSON.parse(requests.at(-1).body);
@@ -1218,7 +1218,7 @@ test("Google retry reports when no eligible reservation is queued", async () => 
   const result = await actions.retryCalendarSync();
   assert.equal(result.error, "");
   assert.match(result.message, /대기열에 없습니다/);
-  assert.match(result.message, /중간관리자 전용 예약/);
+  assert.match(result.message, /중간관리자 예약/);
 });
 
 test("admin November calendar reads events from primary and another Google calendar", async () => {
@@ -1657,6 +1657,7 @@ test("reservation listing reuses the validated session and queries scheduler.int
     from(table) { calls.push(table); return this; },
     select() { return this; },
     eq(field, value) { calls.push(`${field}=${value}`); return this; },
+    is(field, value) { calls.push(`${field}=${value}`); return this; },
     order() { return this; },
     then(resolve) { resolve({ data: rows, error: null }); },
   };
@@ -1665,7 +1666,7 @@ test("reservation listing reuses the validated session and queries scheduler.int
     "../../lib/supabase/admin-role": { isAdmin },
   });
   assert.equal(await getInterviewReservations({ schema(name) { calls.push(name); return query; } }, admin), rows);
-  assert.deepEqual(calls, ["scheduler", "interviews"]);
+  assert.deepEqual(calls, ["scheduler", "interviews", "owner_id=null"]);
 });
 
 test("middle manager reservation listing scopes reads to their own account", async () => {

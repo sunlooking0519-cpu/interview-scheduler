@@ -85,7 +85,7 @@ export async function retryCalendarSync(): Promise<{ message: string; error: str
   try {
     const result = await syncCalendarQueue();
     if (result.failed) return { message: "", error: `동기화 ${result.processed}건 완료, ${result.failed}건 실패했습니다. 연결 상태를 확인한 뒤 재시도해 주세요.` };
-    if (!result.processed) return { message: "현재 처리할 예약이 Google 전송 대기열에 없습니다. 중간관리자 전용 예약은 이 계정으로 전송되지 않습니다.", error: "" };
+    if (!result.processed) return { message: "현재 처리할 내 면접 예약이 Google 전송 대기열에 없습니다. 중간관리자 예약은 강사 관리에서 확인할 수 있습니다.", error: "" };
     return { message: `Google 동기화 ${result.processed}건을 완료했습니다.`, error: "" };
   } catch { return { message: "", error: "Google 연결 설정을 확인해 주세요." }; }
 }
