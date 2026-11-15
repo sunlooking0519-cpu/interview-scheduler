@@ -4,8 +4,9 @@ import { requireSalesStaff } from "@/server/admin-auth";
 import { schoolUuid } from "@/features/admin/school-filters";
 import { koreaDateKey } from "@/features/admin/sales-follow-up";
 import { SchoolFollowUpEditor, type SchoolHistory } from "@/features/admin/components/school-follow-up-dialog";
+import { SchoolActivityEntry } from "@/features/admin/components/school-activity-entry";
 import type { SchoolRow } from "@/features/admin/components/school-table";
-import { methodLabels, proposalLabels, reactionLabels } from "@/features/admin/school-contact-labels";
+import { proposalLabels, reactionLabels } from "@/features/admin/school-contact-labels";
 
 export const dynamic = "force-dynamic";
 
@@ -19,8 +20,8 @@ export default async function SchoolDetailPage({ params }: { params: Promise<{ i
     .eq("id", id).maybeSingle();
   if (schoolError || !school) notFound();
   const { data: activity, error: historyError } = await db.from("school_contact_history")
-    .select("id,school_id,contact_date,update_date,contact_name,contact_email,contact_phone,contact_method,proposal_status,reaction,new_note,change_summary,created_at")
-    .eq("school_id", id).order("created_at", { ascending: false }).limit(500);
+    .select("id,school_id,contact_date,update_date,contact_name,contact_email,contact_phone,contact_method,proposal_status,reaction,new_note,change_summary,created_at,edit_version,edited_at")
+    .eq("school_id", id).order("created_at", { ascending: false }).order("id", { ascending: false }).limit(500);
   const row = school as SchoolRow;
   const history = (activity ?? []) as SchoolHistory[];
   const current = (value: string | null, labels?: Record<string, string>) => value ? (labels?.[value] ?? value) : "미기록";
@@ -49,14 +50,7 @@ export default async function SchoolDetailPage({ params }: { params: Promise<{ i
       </section>
       <section className="self-start rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
         <h2 className="text-xl font-bold">활동 타임라인 <span className="text-indigo-600">{history.length}</span></h2>
-        {history.length ? <ol className="mt-5 space-y-5">{history.map((item) => <li key={item.id} className="border-l-2 border-indigo-300 pl-4 text-sm">
-          <p className="font-bold text-slate-900">{item.contact_date} · {current(item.contact_method, methodLabels)}</p>
-          <p className="mt-1 text-xs text-slate-500">업데이트 {item.update_date} · 기록 {new Date(item.created_at).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}</p>
-          <p className="mt-2 text-slate-700">{item.change_summary}</p>
-          <p className="mt-1 text-slate-600">제안서 {current(item.proposal_status, proposalLabels)} · 반응 {current(item.reaction, reactionLabels)}</p>
-          {(item.contact_name || item.contact_email || item.contact_phone) && <p className="mt-1 break-all text-slate-600">{[item.contact_name, item.contact_phone, item.contact_email].filter(Boolean).join(" · ")}</p>}
-          {item.new_note && <p className="mt-2 whitespace-pre-wrap rounded-lg bg-slate-50 p-3 text-slate-800">{item.new_note}</p>}
-        </li>)}</ol> : <p className="mt-4 text-sm text-slate-500">아직 활동 이력이 없습니다. 왼쪽에서 첫 접촉을 기록하세요.</p>}
+        {history.length ? <ol className="mt-5 space-y-5">{history.map((item, index) => <SchoolActivityEntry key={item.id} item={item} schoolId={id} today={koreaDateKey(new Date())} latest={index === 0} />)}</ol> : <p className="mt-4 text-sm text-slate-500">아직 활동 이력이 없습니다. 왼쪽에서 첫 접촉을 기록하세요.</p>}
       </section>
     </div>
   </div>;

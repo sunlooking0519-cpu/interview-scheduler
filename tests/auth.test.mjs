@@ -1540,6 +1540,39 @@ test("instructor signup creates a linked account without granting an app role or
     assert.equal(Object.hasOwn(payload.app_metadata, "role"), false);
 });
 
+test("school activity corrections use versioned RPCs and refresh school and manager views", async () => {
+  const calls = [];
+  const refreshed = [];
+  let rpcError = null;
+  const actions = load("src/app/admin/schools/activity-actions.ts", {
+    "next/cache": { revalidatePath(path) { refreshed.push(path); } },
+    "@/server/admin-auth": { requireSalesStaff: async () => ({ supabase: { schema: () => ({
+      rpc: async (name, args) => { calls.push({ name, args }); return { data: true, error: rpcError }; },
+    }) } }) },
+    "@/features/admin/school-filters": { schoolUuid: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i },
+  });
+  const schoolId = "22222222-2222-2222-2222-222222222222";
+  const activityId = "33333333-3333-3333-3333-333333333333";
+  const base = { schoolId, activityId, expectedVersion: 2 };
+  const correction = { ...base, contactDate: "2026-11-10", updateDate: "2026-11-12",
+    contactName: "김선생", contactEmail: "teacher@example.com", contactPhone: "010-1234-5678",
+    contactMethod: "call", proposalStatus: "submitted", reaction: "interested", newNote: "교정한 상담 내용" };
+  const editResult = await actions.editSchoolActivity(correction);
+  assert.equal(editResult.saved, true, JSON.stringify(editResult));
+  assert.equal(calls[0].name, "edit_school_contact_activity");
+  assert.equal(calls[0].args.p_expected_version, 2);
+  assert.equal(calls[0].args.p_contact_phone, "010-1234-5678");
+  assert.equal(calls[0].args.p_new_note, "교정한 상담 내용");
+  assert.deepEqual(refreshed, [`/admin/schools/${schoolId}`, "/admin/schools", "/admin/members"]);
+  assert.equal((await actions.deleteSchoolActivity(base)).saved, true);
+  assert.equal(calls[1].name, "delete_school_contact_activity");
+  assert.equal(calls[1].args.p_expected_version, 2);
+  rpcError = { code: "40001" };
+  assert.match((await actions.editSchoolActivity(correction)).error, /새로고침/);
+  assert.equal((await actions.deleteSchoolActivity({ ...base, expectedVersion: -1 })).saved, false);
+  assert.equal(calls.length, 3);
+});
+
 test("school activity overview attributes records to the actual writer and sorts by save time", () => {
   const { groupSchoolActivitiesByRecorder } = load("src/features/admin/school-activity-model.ts", {});
   const school = { id: "school-1", name: "가 학교", province: "전라남도", district: "장성군" };

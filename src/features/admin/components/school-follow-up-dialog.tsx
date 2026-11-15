@@ -11,6 +11,7 @@ export type SchoolHistory = {
   contact_name: string | null; contact_email: string | null; contact_phone: string | null;
   contact_method: string; proposal_status: string | null; reaction: string | null;
   new_note: string | null; change_summary: string; created_at: string;
+  edit_version: number; edited_at: string | null;
 };
 
 const inputClass = "mt-1 w-full min-w-0 rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm";
