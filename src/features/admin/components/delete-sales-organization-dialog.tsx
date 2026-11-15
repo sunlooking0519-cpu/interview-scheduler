@@ -2,10 +2,11 @@
 
 import { useActionState, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { deleteSalesOrganization, getSalesOrganizationDeletionPreview, type OrganizationDeletionPreview } from "@/app/admin/sales/delete-organization";
 
 const sections = [
-  ["contacts", "담당자"], ["cards", "명함 및 사진"], ["activities", "활동 기록"],
+  ["contacts", "담당자"], ["activities", "활동 기록"],
   ["meetings", "미팅 일정"], ["proposals", "제안서"],
 ] as const;
 
@@ -47,6 +48,14 @@ export function DeleteSalesOrganizationDialog({ id, name }: { id: string; name: 
         {previewError && <p role="alert" className="mt-4 rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{previewError}</p>}
         {preview && <>
           <div className="mt-4 space-y-3">
+            <section className="rounded-xl border border-slate-200 p-3">
+              <h3 className="text-sm font-bold text-slate-900">명함 및 사진 {preview.counts.cards}건</h3>
+              {preview.cardImages.length > 0 && <div className="mt-2 grid max-h-72 gap-3 overflow-y-auto sm:grid-cols-2">{preview.cardImages.map((card, index) => <div key={index} className="rounded-lg bg-slate-50 p-2">
+                {card.url && <Image src={card.url} alt={`${card.name} 명함`} width={320} height={200} unoptimized className="max-h-32 w-full rounded object-contain" />}
+                <p className="mt-1 break-words text-xs text-slate-600">{card.name}</p>
+              </div>)}</div>}
+              {preview.counts.cards > preview.cardImages.length && <p className="mt-1 text-xs text-slate-500">처음 {preview.cardImages.length}건만 표시합니다.</p>}
+            </section>
             {sections.map(([key, label]) => <section key={key} className="rounded-xl border border-slate-200 p-3">
               <h3 className="text-sm font-bold text-slate-900">{label} {preview.counts[key]}건</h3>
               {preview[key].length > 0 && <ul className="mt-2 max-h-32 space-y-1 overflow-y-auto text-sm text-slate-600">{preview[key].map((item, index) => <li key={`${key}-${index}`} className="break-words">• {item}</li>)}</ul>}

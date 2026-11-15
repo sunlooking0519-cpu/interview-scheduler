@@ -11,6 +11,7 @@ export type OrganizationDeletionCounts = {
 export type OrganizationDeletionPreview = {
   id: string; name: string; counts: OrganizationDeletionCounts;
   contacts: string[]; cards: string[]; activities: string[]; meetings: string[]; proposals: string[];
+  cardImages: { name: string; url: string }[];
 };
 type DeleteOrganizationState = { deleted: boolean; error: string; photoWarning: string };
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -34,7 +35,15 @@ export async function getSalesOrganizationDeletionPreview(id: string, name: stri
   if (owner.created_by !== user.id) return { preview: null, error: "본인 소유 기관만 삭제할 수 있습니다." };
   const { data, error } = await db.rpc("preview_sales_organization_deletion", { p_organization_id: organizationId });
   if (error || !data) return { preview: null, error: "삭제 영향을 불러오지 못했습니다. 삭제 SQL 적용 여부를 확인해 주세요." };
-  return { preview: { ...(data as Omit<OrganizationDeletionPreview, "id">), id: organizationId }, error: "" };
+  const details = data as Omit<OrganizationDeletionPreview, "id" | "cardImages">;
+  const { data: cards, error: cardsError } = await db.from("sales_business_cards")
+    .select("image_path").eq("organization_id", organizationId).order("created_at", { ascending: false }).limit(20);
+  if (cardsError) return { preview: null, error: "명함 사진을 확인하지 못했습니다. 다시 시도해 주세요." };
+  const cardImages = await Promise.all((cards ?? []).map(async (card, index) => ({
+    name: details.cards[index] ?? "명함",
+    url: (await supabase.storage.from("sales-cards").createSignedUrl(card.image_path, 60 * 5)).data?.signedUrl ?? "",
+  })));
+  return { preview: { ...details, id: organizationId, cardImages }, error: "" };
 }
 
 export async function deleteSalesOrganization(
