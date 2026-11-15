@@ -19,7 +19,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
 
   try {
     const [loaded, feature] = await Promise.all([
-      getInterviewReservations(),
+      getInterviewReservations(supabase, user),
       supabase.schema("scheduler").from("interviews").select(admin ? "hired_at" : "owner_id").limit(1),
     ]);
     interviews = loaded;

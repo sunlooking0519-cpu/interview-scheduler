@@ -1551,7 +1551,7 @@ test("server guard rejects missing, invalid and ordinary users", async () => {
     { data: { user: { app_metadata: {} } }, error: null },
   ]) {
     const { requireAdmin } = load("src/server/admin-auth.ts", {
-      "server-only": {}, "next/navigation": { redirect },
+      "server-only": {}, "react": { cache: (fn) => fn }, "next/navigation": { redirect },
       "../../lib/supabase/server": { createClient: async () => ({ auth: { getUser: async () => result } }) },
       "../../lib/supabase/admin-role": { isAdmin },
     });
@@ -1563,14 +1563,14 @@ test("sales guard accepts approved instructors but keeps ordinary accounts out",
   for (const role of ["instructor", "admin", "super_admin"]) {
     const user = { id: "staff", app_metadata: { role } };
     const { requireSalesStaff } = load("src/server/admin-auth.ts", {
-      "server-only": {}, "next/navigation": { redirect },
+      "server-only": {}, "react": { cache: (fn) => fn }, "next/navigation": { redirect },
       "../../lib/supabase/server": { createClient: async () => ({ auth: { getUser: async () => ({ data: { user }, error: null }) } }) },
       "../../lib/supabase/admin-role": { isAdmin, isInterviewStaff, isSalesStaff },
     });
     assert.equal((await requireSalesStaff()).user.id, "staff");
   }
   const { requireSalesStaff } = load("src/server/admin-auth.ts", {
-    "server-only": {}, "next/navigation": { redirect },
+    "server-only": {}, "react": { cache: (fn) => fn }, "next/navigation": { redirect },
     "../../lib/supabase/server": { createClient: async () => ({ auth: { getUser: async () => ({ data: { user: { app_metadata: { role: "candidate" } } }, error: null }) } }) },
     "../../lib/supabase/admin-role": { isAdmin, isInterviewStaff, isSalesStaff },
   });
@@ -1637,7 +1637,7 @@ test("logout redirects only after successfully ending session", async () => {
   await assert.rejects(failed.logoutAdmin(), /로그아웃에 실패/);
 });
 
-test("reservation listing checks authorization and queries scheduler.interviews", async () => {
+test("reservation listing reuses the validated session and queries scheduler.interviews", async () => {
   const calls = [];
   const rows = [{ id: "booking-id" }];
   const query = {
@@ -1648,14 +1648,11 @@ test("reservation listing checks authorization and queries scheduler.interviews"
     then(resolve) { resolve({ data: rows, error: null }); },
   };
   const { getInterviewReservations } = load("src/server/interviews.ts", {
-    "server-only": {}, "@/server/admin-auth": { requireInterviewStaff: async () => {
-      calls.push("authorized");
-      return { user: admin, supabase: { schema(name) { calls.push(name); return query; } } };
-    } },
+    "server-only": {},
     "../../lib/supabase/admin-role": { isAdmin },
   });
-  assert.equal(await getInterviewReservations(), rows);
-  assert.deepEqual(calls, ["authorized", "scheduler", "interviews"]);
+  assert.equal(await getInterviewReservations({ schema(name) { calls.push(name); return query; } }, admin), rows);
+  assert.deepEqual(calls, ["scheduler", "interviews"]);
 });
 
 test("middle manager reservation listing scopes reads to their own account", async () => {
@@ -1668,10 +1665,9 @@ test("middle manager reservation listing scopes reads to their own account", asy
   };
   const { getInterviewReservations } = load("src/server/interviews.ts", {
     "server-only": {},
-    "@/server/admin-auth": { requireInterviewStaff: async () => ({ user: { id: owner, app_metadata: { role: "instructor" } }, supabase: { schema: () => query } }) },
     "../../lib/supabase/admin-role": { isAdmin },
   });
-  assert.deepEqual(await getInterviewReservations(), []);
+  assert.deepEqual(await getInterviewReservations({ schema: () => query }, { id: owner, app_metadata: { role: "instructor" } }), []);
   assert.deepEqual(calls, [["owner_id", owner]]);
 });
 

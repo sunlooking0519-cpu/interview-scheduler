@@ -1,6 +1,7 @@
 import "server-only";
 
-import { requireInterviewStaff } from "@/server/admin-auth";
+import type { User } from "@supabase/supabase-js";
+import type { createClient } from "../../lib/supabase/server";
 import { isAdmin } from "../../lib/supabase/admin-role";
 
 export type InterviewReservation = {
@@ -18,8 +19,10 @@ export type InterviewReservation = {
   hired_by?: string | null;
 };
 
-export async function getInterviewReservations(): Promise<InterviewReservation[]> {
-  const { supabase, user } = await requireInterviewStaff();
+export async function getInterviewReservations(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  user: User,
+): Promise<InterviewReservation[]> {
   const admin = isAdmin(user);
   let query = supabase
     .schema("scheduler")

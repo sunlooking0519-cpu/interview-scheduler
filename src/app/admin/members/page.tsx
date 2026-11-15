@@ -29,28 +29,37 @@ function TeacherList({ teachers }: { teachers: HiredTeacher[] }) {
 export default async function MembersPage({ searchParams }: { searchParams: Promise<{ result?: string }> }) {
   const { supabase } = await requireAdmin();
   const { result = "" } = await searchParams;
-  const accounts: StaffAccount[] = [];
-  let accountError = "";
   let hiringError = "";
   let teachers: HiredTeacher[] = [];
-  try {
-    const service = createServiceClient();
-    for (let page = 1; page <= 10; page++) {
-      const { data, error } = await service.auth.admin.listUsers({ page, perPage: 200 });
-      if (error) throw error;
-      for (const user of data.users) {
-        const role = String(user.app_metadata.role ?? "");
-        const requestedRole = String(user.user_metadata.requested_role ?? "");
-        if (!["admin", "super_admin", "instructor"].includes(role) && requestedRole !== "instructor") continue;
-        accounts.push({ id: user.id, email: user.email ?? "", name: String(user.user_metadata.full_name ?? ""), role, requestedRole, createdAt: user.created_at, promotionCandidateId: String(user.app_metadata.promotion_candidate_id ?? "") });
+  const accountTask = (async () => {
+    const accounts: StaffAccount[] = [];
+    try {
+      const service = createServiceClient();
+      for (let page = 1; page <= 10; page++) {
+        const { data, error } = await service.auth.admin.listUsers({ page, perPage: 200 });
+        if (error) throw error;
+        for (const user of data.users) {
+          const role = String(user.app_metadata.role ?? "");
+          const requestedRole = String(user.user_metadata.requested_role ?? "");
+          if (!["admin", "super_admin", "instructor"].includes(role) && requestedRole !== "instructor") continue;
+          accounts.push({ id: user.id, email: user.email ?? "", name: String(user.user_metadata.full_name ?? ""), role, requestedRole, createdAt: user.created_at, promotionCandidateId: String(user.app_metadata.promotion_candidate_id ?? "") });
+        }
+        if (data.users.length < 200) break;
       }
-      if (data.users.length < 200) break;
+      return { accounts, error: "" };
+    } catch {
+      return { accounts: [], error: "계정 목록을 불러오지 못했습니다. Supabase 서버 키와 Auth 권한을 확인해 주세요." };
     }
-  } catch { accountError = "계정 목록을 불러오지 못했습니다. Supabase 서버 키와 Auth 권한을 확인해 주세요."; }
+  })();
 
-  const { data: hires, error: hiresError } = await supabase.schema("scheduler").from("interviews")
+  const hiresTask = supabase.schema("scheduler").from("interviews")
     .select("id,name,email,phone,interview_date,hired_at,hired_by")
     .not("hired_at", "is", null).order("hired_at", { ascending: false }).limit(1000);
+  const workspacesTask = supabase.schema("scheduler").from("sales_workspaces").select("id,owner_user_id").limit(1000);
+  const salesTask = loadSalesOrganizationData(supabase);
+  const [{ accounts, error: accountError }, { data: hires, error: hiresError }, workspaces, salesData] = await Promise.all([
+    accountTask, hiresTask, workspacesTask, salesTask,
+  ]);
   if (hiresError) hiringError = "채용 기록을 불러오지 못했습니다. instructor-hiring-migration.sql 적용 여부를 확인해 주세요.";
   else teachers = (hires ?? []) as HiredTeacher[];
 
@@ -58,9 +67,7 @@ export default async function MembersPage({ searchParams }: { searchParams: Prom
   middleManagers.sort((a, b) => (teachersByRecruiter.get(b.id)?.length ?? 0) - (teachersByRecruiter.get(a.id)?.length ?? 0) || a.name.localeCompare(b.name, "ko"));
   requests.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const hiresById = new Map(teachers.map((teacher) => [String(teacher.id), teacher]));
-  const workspaces = await supabase.schema("scheduler").from("sales_workspaces").select("id,owner_user_id").limit(1000);
   const workspaceOwner = new Map((workspaces.data ?? []).map((item) => [item.id, item.owner_user_id]));
-  const salesData = workspaces.error ? null : await loadSalesOrganizationData(supabase);
   const salesByManager = new Map<string, NonNullable<typeof salesData>["rows"]>();
   for (const organization of salesData?.rows ?? []) {
     const owner = workspaceOwner.get(organization.workspace_id ?? "");
