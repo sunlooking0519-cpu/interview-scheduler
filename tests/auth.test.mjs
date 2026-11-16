@@ -1726,6 +1726,31 @@ test("school activity overview attributes records to the actual writer and sorts
   assert.equal(grouped.get("manager")[0].newNote, "자료 재발송");
 });
 
+test("school tabs preserve filters and reject invalid exclusion selections", async () => {
+  const schoolFilters = load("src/features/admin/school-filters.ts", {});
+  const active = schoolFilters.cleanSchoolFilters({ province: "광주광역시", view: "active" });
+  assert.equal(active.view, "active");
+  assert.match(schoolFilters.schoolFiltersHref(active), /province=.*&view=active/);
+  assert.equal(schoolFilters.cleanSchoolFilters({ view: "unknown" }).view, "all");
+
+  const calls = [];
+  const refreshed = [];
+  const actions = load("src/app/admin/schools/exclusion-action.ts", {
+    "next/cache": { revalidatePath(path) { refreshed.push(path); } },
+    "@/server/admin-auth": { requireAdmin: async () => ({ supabase: { schema: () => ({
+      rpc: async (name, args) => { calls.push({ name, args }); return { data: 1, error: null }; },
+    }) } }) },
+    "@/features/admin/school-filters": schoolFilters,
+  });
+  const schoolId = "22222222-2222-2222-2222-222222222222";
+  assert.equal((await actions.setSchoolExclusion([schoolId], true)).changed, 1);
+  assert.equal(calls[0].name, "set_school_exclusion");
+  assert.equal(calls[0].args.p_excluded, true);
+  assert.deepEqual(refreshed, ["/admin/schools", "/admin/members"]);
+  assert.match((await actions.setSchoolExclusion([schoolId, schoolId], true)).error, /다시 선택/);
+  assert.equal(calls.length, 1);
+});
+
 test("instructor hierarchy attributes hires to managers and preserves former recruiters", () => {
   const { buildInstructorHierarchy } = load("src/features/admin/instructor-hierarchy.ts", {});
   const accounts = [

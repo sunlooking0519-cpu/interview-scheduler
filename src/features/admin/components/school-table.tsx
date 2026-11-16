@@ -7,6 +7,7 @@ import { assignSchools } from "@/app/admin/schools/actions";
 import { schoolPageSize, type SchoolFilters } from "@/features/admin/school-filters";
 import { SchoolFollowUpDialog } from "./school-follow-up-dialog";
 import { SchoolDeleteDialog } from "./school-delete-dialog";
+import { SchoolExclusionDialog } from "./school-exclusion-dialog";
 
 export type SchoolRow = {
   id: string; province: string; district: string; level: string; name: string;
@@ -14,6 +15,7 @@ export type SchoolRow = {
   contact_name: string | null; contact_email: string | null; contact_phone: string | null; contact_date: string | null;
   contact_method: string | null; proposal_status: string | null; reaction: string | null;
   notes: string | null; management_updated_on: string | null;
+  excluded_at: string | null; last_activity_at: string | null;
 };
 export type SchoolAssignee = { id: string; name: string; email: string };
 
@@ -68,14 +70,16 @@ export function SchoolTable({ rows, total, page, filters, admin, assignees, assi
     {admin && <div className="mt-5 flex flex-wrap items-center gap-3 rounded-xl bg-indigo-50 p-4">
       <button type="button" onClick={() => open("selected")} disabled={!assignmentEnabled || !selectedCount} className="rounded-xl bg-indigo-600 px-4 py-3 text-sm font-bold text-white disabled:opacity-50">선택 {selectedCount}개 배정</button>
       <button type="button" onClick={() => open("filtered")} disabled={!assignmentEnabled || total < 1 || total > 5000} className="rounded-xl border border-indigo-300 bg-white px-4 py-3 text-sm font-bold text-indigo-700 disabled:opacity-50">검색 결과 {total}개 배정</button>
+      <SchoolExclusionDialog schools={rows.filter((row) => selected.has(row.id)).map((row) => ({ id: row.id, name: row.name, excluded: Boolean(row.excluded_at) }))}
+        excluded={filters.view !== "excluded"} onComplete={(changed) => { setSelected(new Set()); setMessage(changed ? `${changed}개 학교의 제외 상태를 변경했습니다.` : "이미 같은 제외 상태인 학교입니다."); }} />
       <SchoolDeleteDialog selectedIds={[...selected]} onDeleted={(deleted) => { setSelected(new Set()); setMessage(`${deleted}개 학교와 연결 기록을 삭제했습니다.`); }} />
-      <p className="w-full text-xs text-slate-600">학교 범위를 고른 다음, 확인 창에서 담당자를 선택합니다. 이미 배정된 학교는 담당자가 변경됩니다. 삭제는 현재 페이지에서 선택한 학교만 대상으로 합니다.</p>
+      <p className="w-full text-xs text-slate-600">배정·제외·삭제는 현재 페이지의 체크박스로 학교를 선택합니다. 제외해도 배정과 활동 기록은 보존되며 제외학교 탭에서 해제할 수 있습니다.</p>
     </div>}
     {message && <p role="status" className="mt-3 rounded-xl bg-emerald-50 p-3 text-sm font-semibold text-emerald-800">{message}</p>}
     <div className="mt-5 space-y-3 lg:hidden">{rows.map((row) => <article key={row.id} className="rounded-xl border border-slate-200 p-4">
-      <div className="flex items-start gap-3">{checkbox(row, "mobile-school")}<div className="min-w-0 flex-1"><h3 className="break-words font-bold text-slate-950"><Link href={`/admin/schools/${row.id}`} className="hover:text-indigo-700 hover:underline">{row.name}</Link></h3><p className="mt-1 text-xs text-slate-500">{row.province} · {row.district} · {row.level}</p></div></div>
+      <div className="flex items-start gap-3">{checkbox(row, "mobile-school")}<div className="min-w-0 flex-1"><h3 className="break-words font-bold text-slate-950"><Link href={`/admin/schools/${row.id}`} className="hover:text-indigo-700 hover:underline">{row.name}</Link>{row.excluded_at && <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-900">제외</span>}</h3><p className="mt-1 text-xs text-slate-500">{row.province} · {row.district} · {row.level}</p></div></div>
       <div className="mt-3 space-y-1 text-sm">{admin ? <p>배정 담당자 <strong className="text-indigo-700">{assignedName(row)}</strong></p> : <><p>학교 담당자 <strong>{row.contact_name || "미기록"}</strong></p><p>이메일 {row.contact_email ? <a href={`mailto:${row.contact_email}`} className="break-all text-indigo-700 underline">{row.contact_email}</a> : <span className="text-slate-400">미기록</span>}</p><p>접촉일 {row.contact_date ?? "미기록"}</p></>}<p>대표전화 <a href={`tel:${row.phone.replace(/[^+\d]/g, "")}`} className="text-indigo-700 underline">{row.phone}</a></p>{!admin && <p>담당자 전화 {row.contact_phone ? <a href={`tel:${row.contact_phone.replace(/[^+\d]/g, "")}`} className="text-indigo-700 underline">{row.contact_phone}</a> : "미기록"}</p>}</div>
-      <div className="mt-3 flex items-center justify-between gap-2"><span className="text-xs text-slate-500">{row.management_updated_on ? `최근 기록 ${row.management_updated_on}` : "기록 없음"}</span><SchoolFollowUpDialog school={row} today={today} /></div>
+      <div className="mt-3 flex items-center justify-between gap-2"><span className="text-xs text-slate-500">{row.last_activity_at ? `최근 활동 ${new Date(row.last_activity_at).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}` : "활동 없음"}</span><SchoolFollowUpDialog school={row} today={today} /></div>
     </article>)}</div>
     <div className="mt-5 hidden overflow-hidden rounded-xl border border-slate-200 lg:block">
       <table className="w-full table-fixed text-left text-sm"><thead className="bg-slate-50 text-slate-600"><tr>
@@ -84,7 +88,7 @@ export function SchoolTable({ rows, total, page, filters, admin, assignees, assi
         <th className="w-28 px-3 py-3">관리</th>
       </tr></thead><tbody className="divide-y divide-slate-100">{rows.map((row) => <tr key={row.id} className="hover:bg-slate-50">
         {admin && <td className="px-3 py-3">{checkbox(row, "desktop-school")}</td>}
-        <td className="break-words px-3 py-3 font-semibold text-slate-950"><Link href={`/admin/schools/${row.id}`} className="hover:text-indigo-700 hover:underline">{row.name}</Link><span className="mt-1 block text-xs font-normal text-slate-500">{row.province} {row.district} · {row.level}</span></td>
+        <td className="break-words px-3 py-3 font-semibold text-slate-950"><Link href={`/admin/schools/${row.id}`} className="hover:text-indigo-700 hover:underline">{row.name}</Link>{row.excluded_at && <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-900">제외</span>}<span className="mt-1 block text-xs font-normal text-slate-500">{row.province} {row.district} · {row.level}</span>{row.last_activity_at && <span className="mt-1 block text-xs font-normal text-slate-500">최근 활동 {new Date(row.last_activity_at).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}</span>}</td>
         {admin ? <><td className="px-3 py-3 text-slate-600">{row.province} · {row.district}</td><td className="px-3 py-3 text-slate-600">{row.level}</td><td className="px-3 py-3"><a href={`tel:${row.phone.replace(/[^+\d]/g, "")}`} className="text-indigo-700 underline">{row.phone}</a></td><td className="break-words px-3 py-3">{assignedName(row)}</td></>
           : <><td className="break-words px-3 py-3">{row.contact_name || <span className="text-slate-400">미기록</span>}{row.contact_phone && <a href={`tel:${row.contact_phone.replace(/[^+\d]/g, "")}`} className="mt-1 block text-xs font-normal text-indigo-700 underline">{row.contact_phone}</a>}</td><td className="break-all px-3 py-3">{row.contact_email ? <a href={`mailto:${row.contact_email}`} className="text-indigo-700 underline">{row.contact_email}</a> : <span className="text-slate-400">미기록</span>}</td><td className="px-3 py-3">{row.contact_date ?? <span className="text-slate-400">미기록</span>}</td><td className="px-3 py-3"><a href={`tel:${row.phone.replace(/[^+\d]/g, "")}`} className="text-indigo-700 underline">{row.phone}</a></td></>}
         <td className="px-3 py-3"><SchoolFollowUpDialog school={row} today={today} /></td>

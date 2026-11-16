@@ -13,6 +13,7 @@ export function SchoolFilterForm({ filters, locations, assignees, admin }: {
   const districts = [...new Set(locations.filter((item) => !province || item.province === province).map((item) => item.district))]
     .sort((a, b) => a.localeCompare(b, "ko"));
   return <form method="get" action="/admin/schools#school-list" className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-[repeat(5,minmax(0,1fr))_minmax(96px,auto)]">
+    <input type="hidden" name="view" value={filters.view} />
     <label className="text-sm font-medium text-slate-700">광역지역<select name="province" value={province} onChange={(event) => { setProvince(event.target.value); setDistrict(""); }} className="mt-1 w-full rounded-xl border border-slate-300 bg-white p-3"><option value="">전체</option>{schoolProvinces.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
     <label className="text-sm font-medium text-slate-700">지역<select name="district" value={district} onChange={(event) => setDistrict(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-300 bg-white p-3"><option value="">전체</option>{districts.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
     <label className="text-sm font-medium text-slate-700">학교급<select name="level" defaultValue={filters.level} className="mt-1 w-full rounded-xl border border-slate-300 bg-white p-3"><option value="">전체</option>{schoolLevels.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
