@@ -6,6 +6,7 @@ import Link from "next/link";
 import { assignSchools } from "@/app/admin/schools/actions";
 import { schoolPageSize, type SchoolFilters } from "@/features/admin/school-filters";
 import { SchoolFollowUpDialog } from "./school-follow-up-dialog";
+import { SchoolDeleteDialog } from "./school-delete-dialog";
 
 export type SchoolRow = {
   id: string; province: string; district: string; level: string; name: string;
@@ -67,7 +68,8 @@ export function SchoolTable({ rows, total, page, filters, admin, assignees, assi
     {admin && <div className="mt-5 flex flex-wrap items-center gap-3 rounded-xl bg-indigo-50 p-4">
       <button type="button" onClick={() => open("selected")} disabled={!assignmentEnabled || !selectedCount} className="rounded-xl bg-indigo-600 px-4 py-3 text-sm font-bold text-white disabled:opacity-50">선택 {selectedCount}개 배정</button>
       <button type="button" onClick={() => open("filtered")} disabled={!assignmentEnabled || total < 1 || total > 5000} className="rounded-xl border border-indigo-300 bg-white px-4 py-3 text-sm font-bold text-indigo-700 disabled:opacity-50">검색 결과 {total}개 배정</button>
-      <p className="w-full text-xs text-slate-600">학교 범위를 고른 다음, 확인 창에서 담당자를 선택합니다. 이미 배정된 학교는 담당자가 변경됩니다.</p>
+      <SchoolDeleteDialog selectedIds={[...selected]} onDeleted={(deleted) => { setSelected(new Set()); setMessage(`${deleted}개 학교와 연결 기록을 삭제했습니다.`); }} />
+      <p className="w-full text-xs text-slate-600">학교 범위를 고른 다음, 확인 창에서 담당자를 선택합니다. 이미 배정된 학교는 담당자가 변경됩니다. 삭제는 현재 페이지에서 선택한 학교만 대상으로 합니다.</p>
     </div>}
     {message && <p role="status" className="mt-3 rounded-xl bg-emerald-50 p-3 text-sm font-semibold text-emerald-800">{message}</p>}
     <div className="mt-5 space-y-3 lg:hidden">{rows.map((row) => <article key={row.id} className="rounded-xl border border-slate-200 p-4">
