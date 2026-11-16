@@ -14,7 +14,7 @@ function load(path, imports) {
   }).outputText;
   const exports = {};
   vm.runInNewContext(code, {
-    exports, FormData, Response, console, process, Buffer, URL, URLSearchParams, AbortSignal,
+    exports, FormData, File, Response, console, process, Buffer, URL, URLSearchParams, AbortSignal,
     createImageBitmap: imports.__createImageBitmap,
     require(name) {
       if (name.endsWith("/admin-role") && name in imports) return {
@@ -340,6 +340,80 @@ test("manager sales export includes only the chosen manager's organizations and 
     method: "POST", body: JSON.stringify({ managerId, columns: ["organization", "organization"] }),
   }));
   assert.equal(invalid.status, 400);
+});
+
+test("school import reads the supplied workbook and preserves existing assignments while comparing source data", async () => {
+  const ExcelJS = (await import("exceljs")).default;
+  const JSZip = (await import("jszip")).default;
+  const importer = load("src/server/school-import.ts", {
+    "server-only": {}, "node:crypto": crypto, "exceljs": { default: ExcelJS, __esModule: true },
+    "jszip": { default: JSZip, __esModule: true },
+  });
+  const source = readFileSync(new URL("../imports/school-management/담당_학교목록.xlsx", import.meta.url));
+  const parsed = await importer.parseSchoolWorkbook(source);
+  assert.equal(parsed.rows.length, 1003);
+  assert.equal(parsed.issues.length, 0);
+  const first = parsed.rows[0];
+  assert.equal(first.education_office_code, "F10");
+  assert.equal(first.school_code, "7402252");
+  const existing = [{ ...first, id: "existing-id", assigned_to: "manager-id", notes: "상담 기록" }];
+  const same = importer.compareSchoolImport([first], existing);
+  assert.equal(same.unchanged, 1);
+  const changed = importer.compareSchoolImport([{ ...first, phone: "062-000-0000" }], existing);
+  assert.equal(changed.changed.length, 1);
+  assert.equal(changed.changed[0].phone, "062-000-0000");
+  assert.equal("assigned_to" in changed.changed[0], false);
+  const added = importer.compareSchoolImport([{ ...first, school_code: "new-code", name: "새 학교" }], existing);
+  assert.equal(added.added.length, 1);
+  const conflict = importer.compareSchoolImport([{ ...first, school_code: "new-code" }], existing);
+  assert.equal(conflict.issues.length, 1);
+  assert.notEqual(importer.importFingerprint(parsed.digest, existing), importer.importFingerprint(parsed.digest, [{ ...first, phone: "changed", id: "existing-id" }]));
+});
+
+test("school upload previews changes before one scoped upsert without replacing assignments", async () => {
+  const ExcelJS = (await import("exceljs")).default;
+  const JSZip = (await import("jszip")).default;
+  const importer = load("src/server/school-import.ts", {
+    "server-only": {}, "node:crypto": crypto, "exceljs": { default: ExcelJS, __esModule: true },
+    "jszip": { default: JSZip, __esModule: true },
+  });
+  const source = readFileSync(new URL("../imports/school-management/담당_학교목록.xlsx", import.meta.url));
+  const first = (await importer.parseSchoolWorkbook(source)).rows[0];
+  const existing = [{ ...first, id: "existing-id", assigned_to: "manager-id", notes: "기존 상담" }];
+  let writes = [];
+  let authChecks = 0;
+  const service = { schema: () => ({ from: (table) => {
+    assert.equal(table, "schools");
+    return {
+      select: () => ({ order: () => ({ range: async () => ({ data: existing, error: null }) }) }),
+      upsert: async (rows, options) => { writes = rows; assert.equal(options.onConflict, "education_office_code,school_code,level"); return { error: null }; },
+    };
+  } }) };
+  const route = load("src/app/admin/schools/import/route.ts", {
+    "@/server/admin-auth": { requireAdmin: async () => { authChecks++; } },
+    "../../../../../lib/supabase/service": { createServiceClient: () => service },
+    "@/server/school-import": importer,
+  });
+  const request = (mode, fingerprint = "") => {
+    const form = new FormData();
+    form.set("file", new File([source], "담당_학교목록.xlsx", { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+    form.set("mode", mode);
+    if (fingerprint) form.set("fingerprint", fingerprint);
+    return new Request("https://example.com/admin/schools/import", { method: "POST", body: form });
+  };
+  const previewResponse = await route.POST(request("preview"));
+  assert.equal(previewResponse.status, 200);
+  const preview = await previewResponse.json();
+  assert.equal(preview.added, 1002);
+  assert.equal(preview.changed, 0);
+  assert.equal(preview.unchanged, 1);
+  assert.equal(writes.length, 0);
+  assert.equal((await route.POST(request("apply", "stale"))).status, 409);
+  const result = await route.POST(request("apply", preview.fingerprint));
+  assert.equal(result.status, 200);
+  assert.equal(writes.length, 1002);
+  assert.equal(writes.some((row) => "assigned_to" in row || "notes" in row), false);
+  assert.equal(authChecks, 3);
 });
 
 test("manager school export keeps selected columns and includes only assigned schools' active history", async () => {

@@ -5,6 +5,7 @@ import { isAdmin } from "../../../../lib/supabase/admin-role";
 import { cleanSchoolFilters, schoolFiltersHref, schoolPageSize, schoolUuid } from "@/features/admin/school-filters";
 import { SchoolTable, type SchoolRow, type SchoolAssignee } from "@/features/admin/components/school-table";
 import { SchoolFilterForm } from "@/features/admin/components/school-filter-form";
+import { SchoolImportDialog } from "@/features/admin/components/school-import-dialog";
 import { koreaDateKey } from "@/features/admin/sales-follow-up";
 
 export const dynamic = "force-dynamic";
@@ -63,6 +64,7 @@ export default async function SchoolsPage({ searchParams }: {
       <h1 className="mt-3 text-3xl font-bold sm:text-4xl">학교 관리</h1>
       <p className="mt-3 text-sm leading-6 text-indigo-100">{admin ? "학교를 지역·학교급으로 찾고 담당 관리자에게 배정하세요." : "내게 배정된 학교의 담당자와 접촉 기록을 확인하고 후속관리를 남기세요."}</p>
     </header>
+    {admin && <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5"><div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-bold text-slate-950">학교목록 업데이트</h2><p className="mt-1 text-sm text-slate-600">새 학교가 포함된 담당_학교목록.xlsx 형식의 파일을 업로드해 DB에 반영합니다.</p></div><SchoolImportDialog /></div></section>}
     {(rowsResult.error || optionsResult.error) && <p role="alert" className="rounded-xl bg-rose-50 p-4 text-sm text-rose-800">학교 목록을 불러오지 못했습니다. 학교 후속관리 SQL 적용 여부를 확인해 주세요.</p>}
     {assigneeResult.error && <p role="alert" className="rounded-xl bg-amber-50 p-4 text-sm text-amber-900">{assigneeResult.error}</p>}
     <section id="school-list" className="scroll-mt-4 rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
