@@ -2,6 +2,7 @@ import "server-only";
 
 import ExcelJS from "exceljs";
 import { schoolExportColumns, type SchoolExportActivity, type SchoolExportColumn, type SchoolExportRecord, buildSchoolExportRows, buildSchoolActivityRows } from "@/features/admin/school-export";
+import { schoolDirectoryColumns, buildSchoolDirectoryRows, type SchoolDirectoryColumn, type SchoolDirectoryRecord, type SchoolDirectorySheet } from "@/features/admin/school-directory-export";
 
 const widths: Record<SchoolExportColumn, number> = {
   name: 32, province: 18, district: 18, level: 14, phone: 21,
@@ -52,6 +53,31 @@ export async function createSchoolExportWorkbook(
     decorate(activitySheet, buildSchoolActivityRows(schools, activities));
     for (const index of [4, 12]) activitySheet.getColumn(index).numFmt = "yyyy-mm-dd";
     for (const index of [13, 14]) activitySheet.getColumn(index).numFmt = "yyyy-mm-dd hh:mm";
+  }
+  return workbook.xlsx.writeBuffer();
+}
+
+export async function createSchoolDirectoryWorkbook(
+  columns: SchoolDirectoryColumn[],
+  sheets: { view: SchoolDirectorySheet; name: string; schools: SchoolDirectoryRecord[] }[],
+  activityCounts: Map<string, number>, assigneeNames: Map<string, string>,
+) {
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = "Schedule";
+  const labels = new Map<string, string>(schoolDirectoryColumns.map(([key, label]) => [key, label]));
+  const directoryWidths: Record<SchoolDirectoryColumn, number> = { ...widths, assignedManager: 22, lastActivityAt: 23 };
+  for (const section of sheets) {
+    const sheet = workbook.addWorksheet(section.name, { views: [{ state: "frozen", ySplit: 1 }] });
+    sheet.columns = columns.map((key) => ({ header: labels.get(key) ?? key, key, width: directoryWidths[key] }));
+    decorate(sheet, buildSchoolDirectoryRows(section.schools, columns, activityCounts, assigneeNames));
+    for (const key of ["contactDate", "updatedDate", "sourceLoadedOn"] as const) {
+      const index = columns.indexOf(key);
+      if (index >= 0) sheet.getColumn(index + 1).numFmt = "yyyy-mm-dd";
+    }
+    for (const key of ["assignedAt", "lastActivityAt"] as const) {
+      const index = columns.indexOf(key);
+      if (index >= 0) sheet.getColumn(index + 1).numFmt = "yyyy-mm-dd hh:mm";
+    }
   }
   return workbook.xlsx.writeBuffer();
 }

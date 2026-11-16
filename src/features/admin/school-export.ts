@@ -34,7 +34,13 @@ export function buildSchoolExportRows(schools: SchoolExportRecord[], activities:
   const activityCount = new Map<string, number>();
   for (const activity of activities) activityCount.set(activity.school_id, (activityCount.get(activity.school_id) ?? 0) + 1);
   return schools.map((school) => {
-    const values: Record<SchoolExportColumn, string | number | Date> = {
+    const values = schoolExportValues(school, activityCount.get(school.id) ?? 0);
+    return columns.map((column) => values[column]);
+  });
+}
+
+export function schoolExportValues(school: SchoolExportRecord, activityCount: number): Record<SchoolExportColumn, string | number | Date> {
+  return {
       name: school.name, province: school.province, district: school.district, level: school.level,
       phone: school.phone, contactName: school.contact_name ?? "", contactPhone: school.contact_phone ?? "",
       contactEmail: school.contact_email ?? "", contactDate: asDate(school.contact_date),
@@ -42,12 +48,10 @@ export function buildSchoolExportRows(schools: SchoolExportRecord[], activities:
       contactMethod: label(school.contact_method, methodLabels),
       proposalStatus: label(school.proposal_status, proposalLabels),
       reaction: label(school.reaction, reactionLabels), notes: school.notes ?? "",
-      activityCount: activityCount.get(school.id) ?? 0,
+      activityCount,
       sourceLoadedOn: asDate(school.source_loaded_on),
       assignedAt: school.assigned_at ? new Date(school.assigned_at) : "",
-    };
-    return columns.map((column) => values[column]);
-  });
+  };
 }
 
 export function buildSchoolActivityRows(schools: SchoolExportRecord[], activities: SchoolExportActivity[]) {

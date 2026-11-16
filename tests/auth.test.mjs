@@ -420,11 +420,16 @@ test("manager school export keeps selected columns and includes only assigned sc
   const ExcelJS = (await import("exceljs")).default;
   const labels = load("src/features/admin/school-contact-labels.ts", {});
   const schoolExport = load("src/features/admin/school-export.ts", { "./school-contact-labels": labels });
+  const schoolFilters = load("src/features/admin/school-filters.ts", {});
+  const directory = load("src/features/admin/school-directory-export.ts", {
+    "./school-export": schoolExport, "./school-filters": schoolFilters,
+  });
   const { createSchoolExportWorkbook } = load("src/server/school-export-workbook.ts", {
     "server-only": {}, "exceljs": { default: ExcelJS, __esModule: true },
     "@/features/admin/school-export": { ...schoolExport,
       buildSchoolActivityRows: (...args) => schoolExport.buildSchoolActivityRows(...args).map((row) => Array.from(row)),
     },
+    "@/features/admin/school-directory-export": directory,
   });
   const managerId = "22222222-2222-4222-8222-222222222222";
   const schoolId = "33333333-3333-4333-8333-333333333333";
@@ -478,6 +483,85 @@ test("manager school export keeps selected columns and includes only assigned sc
     method: "POST", body: JSON.stringify({ managerId, columns: ["name", "name"], includeHistory: true }),
   }));
   assert.equal(invalid.status, 400);
+});
+
+test("school directory export creates selected category sheets with selected fields", async () => {
+  const ExcelJS = (await import("exceljs")).default;
+  const labels = load("src/features/admin/school-contact-labels.ts", {});
+  const schoolExport = load("src/features/admin/school-export.ts", { "./school-contact-labels": labels });
+  const schoolFilters = load("src/features/admin/school-filters.ts", {});
+  const directory = load("src/features/admin/school-directory-export.ts", {
+    "./school-export": schoolExport, "./school-filters": schoolFilters,
+  });
+  const { createSchoolDirectoryWorkbook } = load("src/server/school-export-workbook.ts", {
+    "server-only": {}, "exceljs": { default: ExcelJS, __esModule: true },
+    "@/features/admin/school-export": schoolExport,
+    "@/features/admin/school-directory-export": directory,
+  });
+  const base = { name: "가학교", province: "전라남도", district: "나주시", level: "초등학교",
+    phone: "061-123-4567", contact_name: "김선생", contact_phone: "010-1234-5678",
+    contact_email: "school@example.com", contact_date: "2026-11-10", management_updated_on: "2026-11-12",
+    contact_method: "call", proposal_status: "submitted", reaction: "interested", notes: "상담",
+    source_loaded_on: null, assigned_at: null, assigned_to: "manager", last_activity_at: "2026-11-12T03:00:00Z",
+    additional_proposal_at: null, excluded_at: null };
+  const schools = [
+    { ...base, id: "active", name: "진행 학교" },
+    { ...base, id: "additional", name: "라온초등학교", additional_proposal_at: "2026-11-16T03:00:00Z" },
+    { ...base, id: "excluded", name: "제외 학교", excluded_at: "2026-11-16T04:00:00Z" },
+  ];
+  const sections = directory.schoolDirectorySheets.map(([view, name]) => ({
+    view, name, schools: directory.schoolsForDirectorySheet(schools, view),
+  }));
+  assert.deepEqual(JSON.parse(JSON.stringify(sections.map((section) => Array.from(section.schools, (school) => school.id)))),
+    [["active"], ["active"], ["additional"], ["excluded"]]);
+  const columns = ["name", "contactPhone", "assignedManager", "lastActivityAt", "activityCount"];
+  const buffer = await createSchoolDirectoryWorkbook(columns, sections,
+    new Map([["active", 2], ["additional", 1]]), new Map([["manager", "이주현"]]));
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(buffer);
+  assert.deepEqual(workbook.worksheets.map((sheet) => sheet.name), ["전체학교", "진행중", "추가제안", "제외학교"]);
+  assert.equal(workbook.getWorksheet("추가제안").getCell("A2").value, "라온초등학교");
+  assert.equal(workbook.getWorksheet("추가제안").getCell("B2").value, "010-1234-5678");
+  assert.equal(workbook.getWorksheet("추가제안").getCell("C2").value, "이주현");
+  assert.equal(workbook.getWorksheet("추가제안").getCell("D2").numFmt, "yyyy-mm-dd hh:mm");
+  assert.equal(workbook.getWorksheet("추가제안").getCell("E2").value, 1);
+  assert.equal(workbook.getWorksheet("전체학교").getCell("A2").value, "진행 학교");
+});
+
+test("school directory export validates selections and scopes managers to assigned schools", async () => {
+  const schoolFilters = load("src/features/admin/school-filters.ts", {});
+  const schoolExport = load("src/features/admin/school-export.ts", {
+    "./school-contact-labels": load("src/features/admin/school-contact-labels.ts", {}),
+  });
+  const directory = load("src/features/admin/school-directory-export.ts", {
+    "./school-export": schoolExport, "./school-filters": schoolFilters,
+  });
+  const managerId = "22222222-2222-4222-8222-222222222222";
+  const seen = [];
+  let output;
+  const rows = [{ id: "school", name: "배정 학교", province: "전라남도", district: "나주시", level: "초등학교",
+    phone: "061-123-4567", assigned_to: managerId, excluded_at: null, additional_proposal_at: null, last_activity_at: null }];
+  const query = { order() { return this; }, range() { return this; }, eq(key, value) { seen.push([key, value]); return this; },
+    then(resolve) { return Promise.resolve({ data: rows, error: null }).then(resolve); } };
+  const route = load("src/app/admin/schools/export/route.ts", {
+    "@/server/admin-auth": { requireSalesStaff: async () => ({ user: { id: managerId, user_metadata: {}, email: "manager@example.com" },
+      supabase: { schema: () => ({ from: () => ({ select: () => query }) }) } }) },
+    "../../../../../lib/supabase/service": { createServiceClient() { throw new Error("service client not needed"); } },
+    "../../../../../lib/supabase/admin-role": { isAdmin: () => false },
+    "@/features/admin/school-directory-export": directory,
+    "@/server/school-export-workbook": { createSchoolDirectoryWorkbook: async (...args) => { output = args; return Buffer.from("xlsx"); } },
+    "@/features/admin/sales-follow-up": { koreaDateKey: () => "2026-11-16" },
+  });
+  const request = (payload) => new Request("https://example.com/admin/schools/export", {
+    method: "POST", body: JSON.stringify(payload),
+  });
+  assert.equal((await route.POST(request({ sheets: ["all", "all"], columns: ["name"] }))).status, 400);
+  assert.equal((await route.POST(request({ sheets: ["all"], columns: ["name", "unknown"] }))).status, 400);
+  const result = await route.POST(request({ sheets: ["all", "excluded"], columns: ["name"] }));
+  assert.equal(result.status, 200);
+  assert.deepEqual(JSON.parse(JSON.stringify(seen)), [["assigned_to", managerId]]);
+  assert.equal(output[1][0].schools.length, 1);
+  assert.equal(output[1][1].schools.length, 0);
 });
 
 test("dashboard counts only reservations whose interview time has not passed in Korea", () => {
