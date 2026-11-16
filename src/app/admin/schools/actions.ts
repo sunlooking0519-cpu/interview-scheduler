@@ -41,6 +41,7 @@ export async function assignSchools(input: AssignInput): Promise<{ changed: numb
       else if (schoolUuid.test(filters.assignment)) query = query.eq("assigned_to", filters.assignment);
       if (filters.view === "active") query = query.not("last_activity_at", "is", null);
       if (filters.view === "excluded") query = query.not("excluded_at", "is", null);
+      if (filters.view === "additional") query = query.not("additional_proposal_at", "is", null);
       const { data, error } = await query;
       if (error) return failure("학교 목록을 다시 확인하지 못했습니다.");
       schoolIds.push(...(data ?? []).map((school) => school.id));

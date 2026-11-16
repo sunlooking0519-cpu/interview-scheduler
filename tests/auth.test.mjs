@@ -1751,6 +1751,28 @@ test("school tabs preserve filters and reject invalid exclusion selections", asy
   assert.equal(calls.length, 1);
 });
 
+test("additional proposal tab preserves filters and validates selected schools", async () => {
+  const schoolFilters = load("src/features/admin/school-filters.ts", {});
+  const additional = schoolFilters.cleanSchoolFilters({ district: "북구", view: "additional" });
+  assert.equal(additional.view, "additional");
+  assert.match(schoolFilters.schoolFiltersHref(additional), /district=.*&view=additional/);
+
+  const calls = [];
+  const actions = load("src/app/admin/schools/additional-proposal-action.ts", {
+    "next/cache": { revalidatePath() {} },
+    "@/server/admin-auth": { requireAdmin: async () => ({ supabase: { schema: () => ({
+      rpc: async (name, args) => { calls.push({ name, args }); return { data: 1, error: null }; },
+    }) } }) },
+    "@/features/admin/school-filters": schoolFilters,
+  });
+  const schoolId = "22222222-2222-2222-2222-222222222222";
+  assert.equal((await actions.setSchoolAdditionalProposal([schoolId], true)).changed, 1);
+  assert.equal(calls[0].name, "set_school_additional_proposal");
+  assert.equal(calls[0].args.p_enabled, true);
+  assert.match((await actions.setSchoolAdditionalProposal([schoolId, schoolId], true)).error, /다시 선택/);
+  assert.equal(calls.length, 1);
+});
+
 test("instructor hierarchy attributes hires to managers and preserves former recruiters", () => {
   const { buildInstructorHierarchy } = load("src/features/admin/instructor-hierarchy.ts", {});
   const accounts = [

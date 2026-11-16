@@ -1,6 +1,6 @@
 export type SchoolFilters = {
   province: string; district: string; level: string; assignment: string; q: string;
-  view: "all" | "active" | "excluded";
+  view: "all" | "active" | "excluded" | "additional";
 };
 
 export const schoolPageSize = 25;
@@ -15,7 +15,7 @@ export function cleanSchoolFilters(input: Omit<Partial<SchoolFilters>, "view"> &
     level: schoolLevels.includes(input.level as (typeof schoolLevels)[number]) ? input.level! : "",
     assignment: String(input.assignment ?? "").trim().slice(0, 80),
     q: String(input.q ?? "").trim().slice(0, 100),
-    view: input.view === "active" || input.view === "excluded" ? input.view : "all",
+    view: input.view === "active" || input.view === "excluded" || input.view === "additional" ? input.view : "all",
   };
 }
 

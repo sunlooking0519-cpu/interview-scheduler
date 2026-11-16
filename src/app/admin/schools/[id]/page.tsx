@@ -16,7 +16,7 @@ export default async function SchoolDetailPage({ params }: { params: Promise<{ i
   const { supabase } = await requireSalesStaff();
   const db = supabase.schema("scheduler");
   const { data: school, error: schoolError } = await db.from("schools")
-    .select("id,province,district,level,name,phone,source_loaded_on,assigned_to,assigned_at,contact_name,contact_email,contact_phone,contact_date,contact_method,proposal_status,reaction,notes,management_updated_on,excluded_at,last_activity_at")
+    .select("id,province,district,level,name,phone,source_loaded_on,assigned_to,assigned_at,contact_name,contact_email,contact_phone,contact_date,contact_method,proposal_status,reaction,notes,management_updated_on,excluded_at,last_activity_at,additional_proposal_at")
     .eq("id", id).maybeSingle();
   if (schoolError || !school) notFound();
   const { data: activity, error: historyError } = await db.from("school_contact_history")
@@ -32,6 +32,7 @@ export default async function SchoolDetailPage({ params }: { params: Promise<{ i
       <h1 className="mt-4 text-3xl font-bold sm:text-4xl">{row.name}</h1>
       <p className="mt-2 text-sm text-indigo-100">{row.province} · {row.district} · {row.level}</p>
       {row.excluded_at && <p className="mt-3 inline-block rounded-full bg-amber-100 px-3 py-1 text-sm font-bold text-amber-950">제외 학교 · 배정과 활동 기록은 보존됩니다</p>}
+      {row.additional_proposal_at && <p className="mt-3 inline-block rounded-full bg-sky-100 px-3 py-1 text-sm font-bold text-sky-950">추가제안 대상 · 다음 수업 제안 예정</p>}
     </header>
     <section className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-5 text-sm sm:grid-cols-2 lg:grid-cols-3">
       <p>학교 대표전화 <strong className="ml-2">{row.phone}</strong></p>
