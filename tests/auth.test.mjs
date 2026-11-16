@@ -1756,6 +1756,19 @@ test("additional proposal tab preserves filters and validates selected schools",
   const additional = schoolFilters.cleanSchoolFilters({ district: "북구", view: "additional" });
   assert.equal(additional.view, "additional");
   assert.match(schoolFilters.schoolFiltersHref(additional), /district=.*&view=additional/);
+  const conditions = (view) => JSON.parse(JSON.stringify(schoolFilters.schoolViewConditions(view)));
+  assert.deepEqual(conditions("all"), {
+    empty: ["excluded_at", "additional_proposal_at"], present: [],
+  });
+  assert.deepEqual(conditions("active"), {
+    empty: ["excluded_at", "additional_proposal_at"], present: ["last_activity_at"],
+  });
+  assert.deepEqual(conditions("additional"), {
+    empty: [], present: ["additional_proposal_at"],
+  });
+  assert.deepEqual(conditions("excluded"), {
+    empty: [], present: ["excluded_at"],
+  });
 
   const calls = [];
   const actions = load("src/app/admin/schools/additional-proposal-action.ts", {

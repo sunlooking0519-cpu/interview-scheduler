@@ -25,3 +25,16 @@ export function schoolFiltersHref(filters: SchoolFilters, page = 1) {
   if (page > 1) params.set("page", String(page));
   return `/admin/schools${params.size ? `?${params}` : ""}`;
 }
+
+export function schoolViewConditions(view: SchoolFilters["view"]) {
+  switch (view) {
+    case "active":
+      return { empty: ["excluded_at", "additional_proposal_at"], present: ["last_activity_at"] };
+    case "additional":
+      return { empty: [], present: ["additional_proposal_at"] };
+    case "excluded":
+      return { empty: [], present: ["excluded_at"] };
+    default:
+      return { empty: ["excluded_at", "additional_proposal_at"], present: [] };
+  }
+}

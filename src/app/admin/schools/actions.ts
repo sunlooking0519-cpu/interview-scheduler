@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/server/admin-auth";
-import { cleanSchoolFilters, schoolUuid, type SchoolFilters } from "@/features/admin/school-filters";
+import { cleanSchoolFilters, schoolUuid, schoolViewConditions, type SchoolFilters } from "@/features/admin/school-filters";
 
 type AssignInput = {
   scope: "selected" | "filtered";
@@ -39,9 +39,9 @@ export async function assignSchools(input: AssignInput): Promise<{ changed: numb
       if (filters.assignment === "unassigned") query = query.is("assigned_to", null);
       else if (filters.assignment === "mine") query = query.eq("assigned_to", user.id);
       else if (schoolUuid.test(filters.assignment)) query = query.eq("assigned_to", filters.assignment);
-      if (filters.view === "active") query = query.not("last_activity_at", "is", null);
-      if (filters.view === "excluded") query = query.not("excluded_at", "is", null);
-      if (filters.view === "additional") query = query.not("additional_proposal_at", "is", null);
+      const viewConditions = schoolViewConditions(filters.view);
+      for (const column of viewConditions.empty) query = query.is(column, null);
+      for (const column of viewConditions.present) query = query.not(column, "is", null);
       const { data, error } = await query;
       if (error) return failure("학교 목록을 다시 확인하지 못했습니다.");
       schoolIds.push(...(data ?? []).map((school) => school.id));

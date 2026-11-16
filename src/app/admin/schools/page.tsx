@@ -2,7 +2,7 @@ import Link from "next/link";
 import { requireSalesStaff } from "@/server/admin-auth";
 import { createServiceClient } from "../../../../lib/supabase/service";
 import { isAdmin } from "../../../../lib/supabase/admin-role";
-import { cleanSchoolFilters, schoolFiltersHref, schoolPageSize, schoolUuid } from "@/features/admin/school-filters";
+import { cleanSchoolFilters, schoolFiltersHref, schoolPageSize, schoolUuid, schoolViewConditions } from "@/features/admin/school-filters";
 import { SchoolTable, type SchoolRow, type SchoolAssignee } from "@/features/admin/components/school-table";
 import { SchoolFilterForm } from "@/features/admin/components/school-filter-form";
 import { SchoolImportDialog } from "@/features/admin/components/school-import-dialog";
@@ -48,9 +48,9 @@ export default async function SchoolsPage({ searchParams }: {
   if (filters.q) query = query.ilike("name", `%${filters.q}%`);
   if (admin && filters.assignment === "unassigned") query = query.is("assigned_to", null);
   else if (admin && schoolUuid.test(filters.assignment)) query = query.eq("assigned_to", filters.assignment);
-  if (filters.view === "active") query = query.not("last_activity_at", "is", null);
-  if (filters.view === "excluded") query = query.not("excluded_at", "is", null);
-  if (filters.view === "additional") query = query.not("additional_proposal_at", "is", null);
+  const viewConditions = schoolViewConditions(filters.view);
+  for (const column of viewConditions.empty) query = query.is(column, null);
+  for (const column of viewConditions.present) query = query.not(column, "is", null);
   const requestedPage = Number(params.page);
   const page = Number.isSafeInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
   const rowsTask = (filters.view === "active"
@@ -75,7 +75,7 @@ export default async function SchoolsPage({ searchParams }: {
     {(rowsResult.error || optionsResult.error) && <p role="alert" className="rounded-xl bg-rose-50 p-4 text-sm text-rose-800">학교 목록을 불러오지 못했습니다. 학교 후속관리 SQL 적용 여부를 확인해 주세요.</p>}
     {assigneeResult.error && <p role="alert" className="rounded-xl bg-amber-50 p-4 text-sm text-amber-900">{assigneeResult.error}</p>}
     <section id="school-list" className="scroll-mt-4 rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
-      <div className="flex flex-wrap items-end justify-between gap-3"><div><h2 className="text-xl font-bold text-slate-950">{filters.view === "active" ? "진행중 학교" : filters.view === "excluded" ? "제외 학교" : filters.view === "additional" ? "추가제안 학교" : admin ? "전체 학교" : "내 배정 학교"} <span className="text-indigo-600">{total.toLocaleString("ko-KR")}</span></h2><p className="mt-1 text-sm text-slate-500">학교명은 지역별로 중복될 수 있어 지역·학교급을 함께 표시합니다.</p></div>{Object.entries(filters).some(([key, value]) => key !== "view" && Boolean(value)) && <Link href={`${schoolFiltersHref({ ...filters, province: "", district: "", level: "", assignment: "", q: "" })}#school-list`} className="text-sm font-semibold text-indigo-700 underline">필터 초기화</Link>}</div>
+      <div className="flex flex-wrap items-end justify-between gap-3"><div><h2 className="text-xl font-bold text-slate-950">{filters.view === "active" ? "진행중 학교" : filters.view === "excluded" ? "제외 학교" : filters.view === "additional" ? "추가제안 학교" : admin ? "전체 학교" : "내 배정 학교"} <span className="text-indigo-600">{total.toLocaleString("ko-KR")}</span></h2><p className="mt-1 text-sm text-slate-500">{filters.view === "all" || filters.view === "active" ? "추가제안·제외학교는 별도 탭에서 확인할 수 있습니다." : "학교명은 지역별로 중복될 수 있어 지역·학교급을 함께 표시합니다."}</p></div>{Object.entries(filters).some(([key, value]) => key !== "view" && Boolean(value)) && <Link href={`${schoolFiltersHref({ ...filters, province: "", district: "", level: "", assignment: "", q: "" })}#school-list`} className="text-sm font-semibold text-indigo-700 underline">필터 초기화</Link>}</div>
       <nav aria-label="학교 목록 구분" className="mt-5 flex flex-wrap gap-2 border-b border-slate-200 pb-3">
         {(["all", "active", "additional", "excluded"] as const).map((view) => <Link key={view} href={`${schoolFiltersHref({ ...filters, view })}#school-list`}
           aria-current={filters.view === view ? "page" : undefined}
